@@ -1,0 +1,20 @@
+{
+	"SublimeLinter":
+	{
+		"linters":
+		{
+			"rust":
+			{
+				"use-crate-root": true,
+				"crate-root": "/Users/nwinter/Programmieren/rust-gif/src/lib.rs"
+			}
+		}
+	},
+	"folders":
+	[
+		{
+			"follow_symlinks": true,
+			"path": "."
+		},
+	]
+}

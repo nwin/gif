@@ -1,0 +1,21 @@
+[package]
+
+name = "gif"
+license = "MIT"
+version = "0.0.2"
+authors = ["nwin <nwin@users.noreply.github.com>"]
+
+[lib]
+name = "gif"
+crate-type = ["dylib", "rlib"]
+
+[dependencies]
+lzw = "0.2"
+
+[dev-dependencies.image]
+path = "../rust-image"
+
+[features]
+default = ["c_api"]
+
+c_api = []
