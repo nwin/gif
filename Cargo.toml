@@ -13,7 +13,7 @@ crate-type = ["dylib", "rlib"]
 lzw = "0.2"
 
 [dev-dependencies.image]
-path = "../rust-image"
+image = "0.3.7"
 
 [features]
 default = ["c_api"]

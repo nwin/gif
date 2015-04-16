@@ -28,7 +28,7 @@ impl From<io::Error> for DecodingError {
 }
 
 /// Known block types
-#[derive(FromPrimitive, Debug, Copy)]
+#[derive(FromPrimitive, Debug, Copy, Clone)]
 pub enum Block {
     Image = 0x2C,
     Extension = 0x21,
@@ -73,7 +73,7 @@ pub enum DisposalMethod {
 }
 
 /// Indicated the progress of decoding. Used for block-wise reading
-#[derive(Debug, PartialEq, Copy)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Progress {
     Start,
     BlockStart,
