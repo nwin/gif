@@ -1,11 +1,11 @@
 #![feature(collections)]
 #![feature(core)]
-#![feature(io)]
 #![feature(box_syntax)]
 #![cfg_attr(test, feature(test))]
-#![feature(libc)]
 #![feature(alloc)]
+#![feature(libc)]
 
+#[cfg(feature = "c_api")]
 extern crate libc;
 extern crate lzw;
 
@@ -19,6 +19,8 @@ pub mod c_api;
 
 pub use traits::HasParameters;
 
-pub use reader::{Decoder, Progress, ColorOutput, DecodingError};
+pub use reader::{Decoder, Progress, Decoded, DecodingError};
+/// Decoder configuration parameters
+pub use reader::{ColorOutput, Extensions};
 pub use reader::{Frame, DisposalMethod};
 pub use reader::Reader;

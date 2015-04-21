@@ -1,19 +1,23 @@
 use std::io;
+use std::mem;
 use std::io::prelude::*;
 
 use traits::{HasParameters, Parameter};
 
 mod decoder;
 pub use self::decoder::{
-    Decoder, Progress, DecodingError,
-    Frame, ColorOutput, DisposalMethod, Block,
+    Decoder, Progress, Decoded, DecodingError,
+    Frame, DisposalMethod, Block,
+    ColorOutput, Extensions,
     N_CHANNELS, PLTE_CHANNELS
 };
 
-impl<R: Read> Parameter<Reader<R>> for ColorOutput {
+impl<T, R> Parameter<Reader<R>> for T
+where T: Parameter<Decoder>, R: Read {
     fn set_param(self, this: &mut Reader<R>) {
         this.decoder.set(self);
     }
+
 }
 
 pub struct Reader<R: Read> {
@@ -40,10 +44,12 @@ impl<R> Reader<R> where R: Read {
         Ok(self.decoder.frames())
     }
 
+    /// Width of the image
     pub fn width(&self) -> u16 {
         self.decoder.width()
     }
 
+    /// Height of the image
     pub fn height(&self) -> u16 {
         self.decoder.height()
     }
@@ -54,10 +60,32 @@ impl<R> Reader<R> where R: Read {
     }
 
     /// Index of the background color in the global palette
-    pub fn bg_color(&self) -> u16 {
+    pub fn bg_color(&self) -> usize {
         self.decoder.bg_color()
     }
-    
+
+    fn decode_next(&mut self) -> Result<Decoded, DecodingError> {
+        loop {
+            let (consumed, state) = {
+                let buf = try!(self.r.fill_buf());
+                if buf.len() == 0 {
+                    return Err(DecodingError::Format(
+                        "unexpected EOF"
+                    ))
+                }
+                try!(self.decoder.decode_bytes(buf))
+            };
+            self.r.consume(consumed);
+            match state {
+                Some(state) => return Ok(unsafe{
+                    // FIXME: #6393
+                    mem::transmute::<Decoded, Decoded>(state)
+                }),
+                None => (),
+            }
+        }
+    }
+
     fn read_until(&mut self, stop_at: Progress) -> Result<(), DecodingError> {
         while self.decoder.progress() != stop_at {
             let consumed = {

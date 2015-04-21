@@ -115,7 +115,7 @@ impl Read for FnInputFile {
 			buf.len() as c_int
 		) };
 		match count {
-			-1 => Err(io::Error::from_os_error(count)),
+			-1 => Err(io::Error::from_raw_os_error(count)),
 			n => Ok(n as usize)
 		}
 	}

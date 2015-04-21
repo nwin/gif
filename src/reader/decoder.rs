@@ -59,6 +59,26 @@ impl Parameter<Decoder> for ColorOutput {
     }
 }
 
+/// Configures how extensions should be handled
+#[derive(PartialEq, Debug)]
+pub enum Extensions {
+    /// Saves all extention data
+    Save,
+    /// Skips the data of unknown extensions
+    /// and extracts the data from known ones
+    Skip
+}
+
+impl Parameter<Decoder> for Extensions {
+    fn set_param(self, this: &mut Decoder) {
+        this.skip_extensions = match self {
+            Extensions::Skip => true,
+            Extensions::Save => false,
+
+        }
+    }
+}
+
 /// Disposal methods
 #[derive(FromPrimitive, Debug)]
 pub enum DisposalMethod {
@@ -83,6 +103,12 @@ pub enum Progress {
     Trailer
 }
 
+/// Indicates whether a certain object has been decoded
+pub enum Decoded<'a> {
+    Frame(&'a Frame),
+
+}
+
 /// Internal state of the GIF decoder
 #[derive(Debug)]
 enum State {
@@ -99,6 +125,7 @@ enum State {
     LocalPalette(usize),
     LzwInit(u8),
     DecodeSubBlock(Box<LzwDecoder<LsbReader>>, usize),
+    FrameDecoded,
     Trailer
 }
 use self::State::*;
@@ -174,6 +201,7 @@ pub struct Decoder {
     state: Option<State>,
     progress: Progress,
     color_output: ColorOutput,
+    skip_extensions: bool,
     version: &'static str,
     width: u16,
     height: u16,
@@ -194,6 +222,7 @@ impl Decoder {
             state: Some(Magic(0, [0; 6])),
             progress: Progress::Start,
             color_output: ColorOutput::Indexed,
+            skip_extensions: true,
             version: "",
             width: 0,
             height: 0,
@@ -225,6 +254,31 @@ impl Decoder {
         }
         Ok(len-buf.len())
     }
+
+    pub fn decode_bytes(&mut self, mut buf: &[u8])
+    -> Result<(usize, Option<Decoded>), DecodingError> {
+        let len = buf.len();
+        let mut decoded = None;
+        while buf.len() > 0 {
+            match self.state {
+                None => break,
+                Some(FrameDecoded) => {
+                    decoded = Some(Decoded::Frame(
+                        &self.frames[self.frames.len()-1]
+                    ));
+                    break
+                }
+                _ => ()
+            }
+            match self.next_state(buf) {
+                Ok(bytes) => {
+                    buf = &buf[bytes..]
+                }
+                Err(err) => return Err(err)
+            }
+        }
+        Ok((len-buf.len(), decoded))
+    }
     
     pub fn progress(&self) -> Progress {
         self.progress
@@ -244,10 +298,10 @@ impl Decoder {
     }
 
     /// Index of the background color in the global palette
-    pub fn bg_color(&self) -> u16 {
+    pub fn bg_color(&self) -> usize {
         self.global_color_table.chunks(PLTE_CHANNELS).position(
             |v| v == &self.background_color[..3] 
-        ).unwrap_or(0) as u16
+        ).unwrap_or(0) as usize
     }
     
     pub fn frames(&self) -> &[Frame] {
@@ -524,8 +578,11 @@ impl Decoder {
                     }
                     self.current = None;
                     self.progress = Progress::DataEnd;
-                    goto!(BlockEnd(b))
+                    goto!(0, FrameDecoded)
                 }
+            }
+            FrameDecoded => {
+                goto!(BlockEnd(b))
             }
             Trailer => {
                 self.state = None;
@@ -570,7 +627,7 @@ impl Decoder {
             let capacity = frame.buffer.capacity();
             let new_size = cmp::max(capacity, required_bytes);
             frame.buffer.reserve(new_size - capacity);
-            for i in 0..(new_size - capacity) {
+            for _ in 0..(new_size - capacity) {
                 frame.buffer.push(0)
             }
             // unsafe { frame.buffer.set_len(required_bytes) }

@@ -349,14 +349,14 @@ fn DGifGetExtensionNext(_: *mut GifFileType, extension: *mut *mut GifByteType) -
     }
     GIF_OK
 }
-
+/*
 /// This function reallocs `ext_blocks` and copies `data`
 #[no_mangle] pub unsafe extern "C"
 fn GifAddExtensionBlock(block_count: *mut c_int, ext_blocks: *mut *const ExtensionBlock,
                         ext_type: c_int, len: c_uint, data: *const c_uchar) -> c_int {
     GIF_OK
 }
-
+*/
 #[no_mangle] pub unsafe extern "C"
 fn GifFreeExtensions(block_count: *mut c_int, ext_blocks: *mut *mut ExtensionBlock) {
     if ext_blocks == ptr::null_mut() || block_count ==  ptr::null_mut() {
