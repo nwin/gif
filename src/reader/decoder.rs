@@ -5,7 +5,7 @@ use std::default::Default;
 use std::io;
 use std::io::prelude::*;
 
-use lzw::{LzwDecoder, LsbReader};
+use lzw;
 
 use traits::{HasParameters, Parameter};
 
@@ -80,7 +80,7 @@ impl Parameter<Decoder> for Extensions {
 }
 
 /// Disposal methods
-#[derive(FromPrimitive, Debug)]
+#[derive(FromPrimitive, Debug, Copy, Clone)]
 pub enum DisposalMethod {
     /// Decoder is not required to take any action.
     Any = 0,
@@ -124,7 +124,7 @@ enum State {
     SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
-    DecodeSubBlock(Box<LzwDecoder<LsbReader>>, usize),
+    DecodeSubBlock(Box<lzw::Decoder<lzw::LsbReader>>, usize),
     FrameDecoded,
     Trailer
 }
@@ -166,7 +166,7 @@ enum ByteValue {
 pub struct Frame {
     pub delay: u16,
     pub dispose: DisposalMethod,
-    pub transparent: Option<u8>,
+    pub transparent: Option<usize>,
     pub needs_user_input: bool,
     pub top: u16,
     pub left: u16,
@@ -434,7 +434,7 @@ impl Decoder {
                     TransparentIdx => {
                         self.ext.1.push(b);
                         if let Some(ref mut idx) = self.current_frame().transparent {
-                             *idx = b
+                             *idx = b as usize
                         }
                         self.progress == Progress::ExtSubBlockFinished;
                         goto!(AwaitBlockEnd)
@@ -555,7 +555,7 @@ impl Decoder {
             LzwInit(code_size) => {
                 self.progress = Progress::DataStart;
                 goto!(DecodeSubBlock(
-                    box LzwDecoder::new(LsbReader::new(), code_size),
+                    box lzw::Decoder::new(lzw::LsbReader::new(), code_size),
                     b as usize
                 ))
             }
@@ -565,7 +565,6 @@ impl Decoder {
                     let mut buf = &buf[..n];
                     while buf.len() > 0 {
                         let (consumed, bytes) = try!(decoder.decode_bytes(buf));
-                        
                         self.current_frame().buffer.push_all(bytes);
                         buf = &buf[consumed..];
                     }

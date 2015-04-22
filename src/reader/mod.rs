@@ -7,7 +7,7 @@ use traits::{HasParameters, Parameter};
 mod decoder;
 pub use self::decoder::{
     Decoder, Progress, Decoded, DecodingError,
-    Frame, DisposalMethod, Block,
+    Frame, DisposalMethod, Block, Extension,
     ColorOutput, Extensions,
     N_CHANNELS, PLTE_CHANNELS
 };

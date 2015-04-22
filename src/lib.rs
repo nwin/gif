@@ -11,6 +11,7 @@ extern crate lzw;
 
 mod traits;
 mod reader;
+mod writer;
 
 #[cfg(feature = "c_api")]
 mod c_api_utils;
@@ -19,8 +20,27 @@ pub mod c_api;
 
 pub use traits::HasParameters;
 
-pub use reader::{Decoder, Progress, Decoded, DecodingError};
+pub use reader::{Decoder, Progress, Decoded, DecodingError, Frame};
 /// Decoder configuration parameters
 pub use reader::{ColorOutput, Extensions};
-pub use reader::{Frame, DisposalMethod};
+pub use reader::{Block, Extension, DisposalMethod};
 pub use reader::Reader;
+
+pub use writer::{Encoder, ExtensionData};
+
+#[cfg(test)]
+#[test]
+fn round_trip() {
+	use std::io::prelude::*;
+	use std::fs::File;
+	let mut data = vec![];
+	File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
+	let mut decoder = Reader::new(&*data);
+    let frame = &decoder.read_to_end().unwrap()[0];
+	let mut data2 = vec![];
+	{
+		let mut encoder = Encoder::new(&mut data2, frame.width, frame.height);
+		let _ = encoder.write_frame(frame);
+	}
+
+}

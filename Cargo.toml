@@ -10,7 +10,7 @@ name = "gif"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-lzw = "0.2"
+lzw = "0.4"
 
 [dev-dependencies.image]
 image = "0.3.7"
