@@ -1,5 +1,7 @@
+use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
+use std::slice::bytes;
 
 use lzw;
 
@@ -32,28 +34,149 @@ impl ExtensionData {
 
 trait WriteBytesExt<T> {
 	fn write_le(&mut self, n: T) -> io::Result<()>;
+
+	/*
+	#[inline]
+	fn write_byte(&mut self, n: u8) -> io::Result<()> where Self: Write {
+		self.write_all(&[n])
+	}
+	*/
 }
 
-impl<W> WriteBytesExt<u16> for W where W: Write {
+impl<W: Write + ?Sized> WriteBytesExt<u8> for W {
+	#[inline]
+	fn write_le(&mut self, n: u8) -> io::Result<()> {
+		self.write_all(&[n])
+		
+	}
+}
+
+impl<W: Write + ?Sized> WriteBytesExt<u16> for W {
+	#[inline]
 	fn write_le(&mut self, n: u16) -> io::Result<()> {
 		self.write_all(&[n as u8, (n>>8) as u8])
 		
 	}
 }
 
-impl<W> WriteBytesExt<u8> for W where W: Write {
-	fn write_le(&mut self, n: u8) -> io::Result<()> {
-		self.write_all(&[n])
+impl<W: Write + ?Sized> WriteBytesExt<u32> for W where W: Write {
+	#[inline]
+	fn write_le(&mut self, n: u32) -> io::Result<()> {
+		try!(self.write_le(n as u16));
+		self.write_le((n >> 16) as u16)
+		
+	}
+}
+
+impl<W: Write + ?Sized> WriteBytesExt<u64> for W where W: Write {
+	#[inline]
+	fn write_le(&mut self, n: u64) -> io::Result<()> {
+		try!(self.write_le(n as u32));
+		self.write_le((n >> 32) as u32)
+		
+	}
+}
+
+struct BlockWriter<'a, W: Write + 'a> {
+	w: &'a mut W,
+	bytes: usize,
+	buf: [u8; 0xFF]
+}
+
+
+impl<'a, W: Write + 'a> BlockWriter<'a, W> {
+	fn new(w: &'a mut W) -> BlockWriter<'a, W> {
+		BlockWriter {
+			w: w,
+			bytes: 0,
+			buf: [0; 0xFF]
+		}
+	}
+}
+
+impl<'a, W: Write + 'a> Write for BlockWriter<'a, W> {
+
+	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+		let to_copy = min(buf.len(), 0xFF - self.bytes);
+		bytes::copy_memory(&buf[..to_copy], &mut self.buf[self.bytes..]);
+		self.bytes += to_copy;
+		if self.bytes == 0xFF {
+			self.bytes = 0;
+			try!(self.w.write_le(0xFFu8));
+			try!(self.w.write_all(&self.buf));
+		}
+		Ok(to_copy)
+	}
+	fn flush(&mut self) -> io::Result<()> {
+		return Err(io::Error::new(
+			io::ErrorKind::Other,
+			"Cannot flush a BlockWriter, use `drop` instead."
+		))
+	}
+}
+
+impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
+
+    #[cfg(feature = "raii_no_panic")]
+	fn drop(&mut self) {
+		if self.bytes > 0 {
+			let _ = self.w.write_le(self.bytes as u8);
+			let _ = self.w.write_all(&self.buf[..self.bytes]);	
+		}
+	}
+
+    #[cfg(not(feature = "raii_no_panic"))]
+	fn drop(&mut self) {
+		if self.bytes > 0 {
+			self.w.write_le(self.bytes as u8).unwrap();
+			self.w.write_all(&self.buf[..self.bytes]).unwrap();	
+		}
 	}
 }
 
 pub struct Encoder<'a, W: Write + 'a> {
 	w: &'a mut W,
-	header_written: bool,
 	global_palette: bool,
 	width: u16,
 	height: u16
 }
+
+pub struct HeaderWritten<'a, W: Write + 'a> {
+	enc: Encoder<'a, W>
+}
+
+impl<'a, W: Write + 'a> HeaderWritten<'a, W> {
+	/// Writes a complete frame to the image
+	///
+	/// Note: This function also writes a control extention if necessary.
+	pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+		self.enc.write_frame(frame)
+	}
+
+	/// Writes an extension to the image
+	pub fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
+		self.enc.write_extension(extension)
+	}
+
+	/// Writes a raw extension to the image
+	pub fn write_raw_extension(&mut self, func: u8, data: &[u8]) -> io::Result<()> {
+		self.enc.write_raw_extension(func, data)
+	}
+}
+
+impl<'a, W: Write + 'a> Drop for HeaderWritten<'a, W> {
+
+    #[cfg(feature = "raii_no_panic")]
+	fn drop(&mut self) {
+		let _ = self.enc.w.write_le(Block::Trailer as u8);
+	}
+
+    #[cfg(not(feature = "raii_no_panic"))]
+	fn drop(&mut self) {
+		self.enc.w.write_le(Block::Trailer as u8).unwrap()
+	}
+}
+
 /*
 
 pub struct Frame {
@@ -75,27 +198,40 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 	pub fn new(w: &'a mut W, width: u16, height: u16) -> Self {
 		Encoder {
 			w: w,
-			header_written: false,
 			global_palette: false,
 			width: width,
 			height: height
 		}
 	}
 
+	/// Writes the global color palette
+	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<HeaderWritten<'a, W>> {
+		self.global_palette = true;
+		let mut flags = 0;
+		flags |= 0b1000_0000;
+		let num_colors = palette.len() / 3;
+		flags |= flag_size(num_colors);
+		flags |= flag_size(num_colors) << 4; // wtf flag
+		try!(self.write_screen_desc(flags));
+		try!(self.write_color_table(palette));
+		Ok(HeaderWritten {
+			enc: self
+		})
+	}
+
 	/// Writes a complete frame to the image
 	///
-	/// Note: This function also writes a control extention if necessary.
-	pub fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
-		try!(self.write_screen_desc());
-		if frame.delay > 0 || frame.transparent.is_some() {
+	/// Note: This function also writes a control extension if necessary.
+	fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+		//if frame.delay > 0 || frame.transparent.is_some() {
 			try!(self.write_extension(ExtensionData::new_control_ext(
 				frame.delay,
 				frame.dispose,
 				frame.needs_user_input,
 				frame.transparent
 
-			)))
-		}
+			)));
+		//}
 		try!(self.w.write_le(Block::Image as u8));
 		try!(self.w.write_le(frame.left));
 		try!(self.w.write_le(frame.top));
@@ -105,7 +241,8 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 		try!(match frame.palette {
 			Some(ref palette) => {
 				flags |= 0b1000_0000;
-				flags |= flag_size(palette.len());
+				let num_colors = palette.len() / 3;
+				flags |= flag_size(num_colors);
 				try!(self.w.write_le(flags));
 				self.write_color_table(palette)
 			},
@@ -125,7 +262,8 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 		{
 			let min_code_size: u8 = flag_size((*data.iter().max().unwrap_or(&0) + 1) as usize) + 1;
 			try!(self.w.write_le(min_code_size));
-			let mut enc = try!(lzw::Encoder::new(lzw::LsbWriter::new(&mut self.w), min_code_size));
+			let mut bw = BlockWriter::new(&mut self.w);
+			let mut enc = try!(lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
 			try!(enc.encode_bytes(data));
 		}
 		self.w.write_le(0u8)
@@ -143,9 +281,8 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 	}
 
 	/// Writes an extension to the image
-	pub fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
+	fn write_extension(&mut self, extension: ExtensionData) -> io::Result<()> {
 		use self::ExtensionData::*;
-		try!(self.write_screen_desc());
 		try!(self.w.write_le(Block::Extension as u8));
 		match extension {
 			Control { flags, delay, trns } => {
@@ -159,9 +296,8 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 		self.w.write_le(0u8)
 	}
 
-	/// Writes an extension to the image
-	pub fn write_raw_extension(&mut self, func: u8, data: &[u8]) -> io::Result<()> {
-		try!(self.write_screen_desc());
+	/// Writes a raw extension to the image
+	fn write_raw_extension(&mut self, func: u8, data: &[u8]) -> io::Result<()> {
 		try!(self.w.write_le(Block::Extension as u8));
 		try!(self.w.write_le(func as u8));
 		for chunk in data.chunks(0xFF) {
@@ -172,17 +308,13 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 	}
 
 	/// Writes the logical screen desriptor
-	fn write_screen_desc(&mut self) -> io::Result<()> {
-		if !self.header_written {
-			try!(self.w.write_all(b"GIF89a"));
-			try!(self.w.write_le(self.width));
-			try!(self.w.write_le(self.height));
-			try!(self.w.write_le(0u8)); // packed field
-			try!(self.w.write_le(0u8)); // bg index
-			try!(self.w.write_le(0u8)); // aspect ratio
-			self.header_written = true;
-		}
-		Ok(())
+	fn write_screen_desc(&mut self, flags: u8) -> io::Result<()> {
+		try!(self.w.write_all(b"GIF89a"));
+		try!(self.w.write_le(self.width));
+		try!(self.w.write_le(self.height));
+		try!(self.w.write_le(flags)); // packed field
+		try!(self.w.write_le(0u8)); // bg index
+		self.w.write_le(0u8) // aspect ratio
 	}
 }
 
@@ -199,10 +331,4 @@ fn flag_size(size: usize) -> u8 {
         129...256 => 7,
         _ => 7
     }
-}
-
-impl<'a, W: Write + 'a> Drop for Encoder<'a, W> {
-	fn drop(&mut self) {
-		let _ = self.w.write_le(Block::Trailer as u8);
-	}
 }

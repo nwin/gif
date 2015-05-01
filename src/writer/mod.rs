@@ -1,3 +1,3 @@
 mod encoder;
 
-pub use self::encoder::{Encoder, ExtensionData};
+pub use self::encoder::{Encoder, HeaderWritten, ExtensionData};

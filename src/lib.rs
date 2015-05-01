@@ -8,6 +8,9 @@
 #[cfg(feature = "c_api")]
 extern crate libc;
 extern crate lzw;
+extern crate num;
+
+#[macro_use] extern crate enum_primitive;
 
 mod traits;
 mod reader;
@@ -26,7 +29,7 @@ pub use reader::{ColorOutput, Extensions};
 pub use reader::{Block, Extension, DisposalMethod};
 pub use reader::Reader;
 
-pub use writer::{Encoder, ExtensionData};
+pub use writer::{Encoder, HeaderWritten, ExtensionData};
 
 #[cfg(test)]
 #[test]

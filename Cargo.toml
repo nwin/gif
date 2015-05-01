@@ -10,12 +10,15 @@ name = "gif"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-lzw = "0.4"
+lzw = "0.5"
+num = "*"
+enum_primitive = "*"
 
 [dev-dependencies.image]
 image = "0.3.7"
 
 [features]
-default = ["c_api"]
+default = ["c_api", "raii_no_panic"]
 
+raii_no_panic = []
 c_api = []

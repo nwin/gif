@@ -19,9 +19,10 @@ use reader::{Reader, Progress};
 use c_api_utils::{CInterface, CFile, FnInputFile};
 
 #[repr(u8)]
-#[derive(FromPrimitive)]
+enum_from_primitive!{
 /// FIXME replace this with proper definition as soon it exists
 pub enum _Bool { False = 0, True = 1 }
+}
 /// FIXME replace this with proper definition as soon it exists
 pub type c_bool = _Bool;
 

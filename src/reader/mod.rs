@@ -54,6 +54,11 @@ impl<R> Reader<R> where R: Read {
         self.decoder.height()
     }
 
+    /// Frames
+    pub fn frames(&self) -> &[Frame] {
+        self.decoder.frames()
+    }
+
     /// The global color palette
     pub fn global_palette(&self) -> &[u8] {
         self.decoder.global_palette()
@@ -107,7 +112,7 @@ impl<R> Reader<R> where R: Read {
 mod c_interface {
     use std::io::prelude::*;
     use std::ptr;
-    use std::num;
+    use num;
 
     use libc::c_int;
     

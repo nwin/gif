@@ -1,10 +1,10 @@
-use std::num;
 use std::cmp;
 use std::default::Default;
 
 use std::io;
 use std::io::prelude::*;
 
+use num;
 use lzw;
 
 use traits::{HasParameters, Parameter};
@@ -28,29 +28,38 @@ impl From<io::Error> for DecodingError {
 }
 
 /// Known block types
-#[derive(FromPrimitive, Debug, Copy, Clone)]
+enum_from_primitive!{
+#[derive(Debug, Copy, Clone)]
 pub enum Block {
     Image = 0x2C,
     Extension = 0x21,
     Trailer = 0x3B
 }
+}
 
 /// Known GIF extensions
-#[derive(FromPrimitive, Debug)]
+enum_from_primitive!{
+#[derive(Debug)]
 pub enum Extension {
     Text = 0x01,
     Control = 0xF9,
     Comment = 0xFE,
     Application = 0xFF
 }
+}
 
 /// Output mode for the image data
+/// ### FIXME: NOT DOCS YET DUE TO RUST BUG
+enum_from_primitive!{
 #[derive(PartialEq, Debug)]
 pub enum ColorOutput {
-    /// The decoder expands the image data to 32bit RGBA
+    // FIXME enum_from_primitive and make this a doc-comment
+    // The decoder expands the image data to 32bit RGBA
     TrueColor,
-    /// The decoder returns the raw indexed data
+    // FIXME enum_from_primitive and make this a doc-comment
+    // The decoder returns the raw indexed data*/
     Indexed,
+}
 }
 
 impl Parameter<Decoder> for ColorOutput {
@@ -80,16 +89,23 @@ impl Parameter<Decoder> for Extensions {
 }
 
 /// Disposal methods
-#[derive(FromPrimitive, Debug, Copy, Clone)]
+/// ### FIXME: NOT DOCS YET DUE TO RUST BUG
+enum_from_primitive!{
+#[derive(Debug, Copy, Clone)]
 pub enum DisposalMethod {
-    /// Decoder is not required to take any action.
+    // FIXME enum_from_primitive and make this a doc-comment
+    // Decoder is not required to take any action.
     Any = 0,
-    /// Do not dispose.
+    // FIXME enum_from_primitive and make this a doc-comment
+    // Do not dispose.
     Keep = 1,
-    /// Restore to background color.
+    // FIXME enum_from_primitive and make this a doc-comment
+    // Restore to background color.
     Background = 2,
-    /// Restore to previous.
+    // FIXME enum_from_primitive and make this a doc-comment
+    // Restore to previous.
     Previous = 3,
+}
 }
 
 /// Indicated the progress of decoding. Used for block-wise reading
