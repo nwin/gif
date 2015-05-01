@@ -3,11 +3,11 @@ use std::mem;
 use std::io::prelude::*;
 
 use traits::{HasParameters, Parameter};
+use types::Frame;
 
 mod decoder;
 pub use self::decoder::{
     Decoder, Progress, Decoded, DecodingError,
-    Frame, DisposalMethod, Block, Extension,
     ColorOutput, Extensions,
     N_CHANNELS, PLTE_CHANNELS
 };
@@ -116,10 +116,12 @@ mod c_interface {
 
     use libc::c_int;
     
+    use types::Block;
+
     use c_api::{self, GifWord};
     use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
 
-    use super::decoder::{Block, Progress, DecodingError};
+    use super::decoder::{Progress, DecodingError};
 
     use super::{Reader};
 

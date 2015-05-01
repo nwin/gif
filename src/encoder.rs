@@ -5,7 +5,8 @@ use std::slice::bytes;
 
 use lzw;
 
-use {Block, Frame, Extension, DisposalMethod};
+use traits::WriteBytesExt;
+use types::{Block, Frame, Extension, DisposalMethod};
 
 pub enum ExtensionData {
 	Control { flags: u8, delay: u16, trns: u8 }
@@ -29,51 +30,6 @@ impl ExtensionData {
 			delay: delay,
 			trns: trns
 		}
-	}
-}
-
-trait WriteBytesExt<T> {
-	fn write_le(&mut self, n: T) -> io::Result<()>;
-
-	/*
-	#[inline]
-	fn write_byte(&mut self, n: u8) -> io::Result<()> where Self: Write {
-		self.write_all(&[n])
-	}
-	*/
-}
-
-impl<W: Write + ?Sized> WriteBytesExt<u8> for W {
-	#[inline]
-	fn write_le(&mut self, n: u8) -> io::Result<()> {
-		self.write_all(&[n])
-		
-	}
-}
-
-impl<W: Write + ?Sized> WriteBytesExt<u16> for W {
-	#[inline]
-	fn write_le(&mut self, n: u16) -> io::Result<()> {
-		self.write_all(&[n as u8, (n>>8) as u8])
-		
-	}
-}
-
-impl<W: Write + ?Sized> WriteBytesExt<u32> for W where W: Write {
-	#[inline]
-	fn write_le(&mut self, n: u32) -> io::Result<()> {
-		try!(self.write_le(n as u16));
-		self.write_le((n >> 16) as u16)
-		
-	}
-}
-
-impl<W: Write + ?Sized> WriteBytesExt<u64> for W where W: Write {
-	#[inline]
-	fn write_le(&mut self, n: u64) -> io::Result<()> {
-		try!(self.write_le(n as u32));
-		self.write_le((n >> 32) as u32)
-		
 	}
 }
 

@@ -11,6 +11,7 @@ crate-type = ["dylib", "rlib"]
 
 [dependencies]
 lzw = "0.5"
+libc = "0.1"
 num = "*"
 enum_primitive = "*"
 

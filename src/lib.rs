@@ -3,7 +3,6 @@
 #![feature(box_syntax)]
 #![cfg_attr(test, feature(test))]
 #![feature(alloc)]
-#![feature(libc)]
 
 #[cfg(feature = "c_api")]
 extern crate libc;
@@ -13,8 +12,9 @@ extern crate num;
 #[macro_use] extern crate enum_primitive;
 
 mod traits;
+mod types;
 mod reader;
-mod writer;
+mod encoder;
 
 #[cfg(feature = "c_api")]
 mod c_api_utils;
@@ -22,14 +22,14 @@ mod c_api_utils;
 pub mod c_api;
 
 pub use traits::HasParameters;
+pub use types::{Block, Extension, DisposalMethod, Frame};
 
-pub use reader::{Decoder, Progress, Decoded, DecodingError, Frame};
+pub use reader::{Decoder, Progress, Decoded, DecodingError};
 /// Decoder configuration parameters
 pub use reader::{ColorOutput, Extensions};
-pub use reader::{Block, Extension, DisposalMethod};
 pub use reader::Reader;
 
-pub use writer::{Encoder, HeaderWritten, ExtensionData};
+pub use encoder::{Encoder, HeaderWritten, ExtensionData};
 
 #[cfg(test)]
 #[test]
