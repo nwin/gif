@@ -39,11 +39,17 @@ fn round_trip() {
 	let mut data = vec![];
 	File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
 	let mut decoder = Reader::new(&*data);
-    let frame = &decoder.read_to_end().unwrap()[0];
+	let _ = decoder.read_to_end().unwrap();
 	let mut data2 = vec![];
 	{
-		let mut encoder = Encoder::new(&mut data2, frame.width, frame.height);
-		let _ = encoder.write_frame(frame);
+    	let encoder = {
+    		let frame = &decoder.frames()[0];
+    		Encoder::new(&mut data2, frame.width, frame.height)
+    	};
+		let mut encoder = encoder.write_global_palette(decoder.global_palette()).unwrap();
+		let frame = &decoder.frames()[0];
+		
+		encoder.write_frame(frame).unwrap();
 	}
-
+	assert_eq!(&data[..], &data2[..])
 }
