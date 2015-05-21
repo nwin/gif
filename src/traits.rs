@@ -14,8 +14,9 @@ pub trait HasParameters: Sized {
     }
 }
 
-/// Writer extesion to write little endian data
+/// Writer extension to write little endian data
 pub trait WriteBytesExt<T> {
+	/// Writes `T` to a bytes stream. Least significant byte first.
 	fn write_le(&mut self, n: T) -> io::Result<()>;
 
 	/*

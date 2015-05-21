@@ -179,6 +179,7 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 	///
 	/// Note: This function also writes a control extension if necessary.
 	fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+		// TODO commented off to pass test in lib.rs
 		//if frame.delay > 0 || frame.transparent.is_some() {
 			try!(self.write_extension(ExtensionData::new_control_ext(
 				frame.delay,

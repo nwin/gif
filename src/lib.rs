@@ -1,3 +1,63 @@
+//! # GIF encoding and decoding library
+//!
+//! This library provides all functions necessary to decode and encode GIF files. 
+//! 
+//! ## High level interface
+//! 
+//! The high level interface is very simple to use but can be memory intensive
+//! since the whole image is decoded at once. It is based on the two types
+//! [`Encoder`](struct.Encoder.html) and [`Decoder`](struct.Decoder.html).
+//! 
+//! ### Decoding GIF files
+//! 
+//! TODO
+//! 
+//! ### Encoding GIF files
+//! 
+//! ```
+//! use gif::{Frame, Encoder};
+//! use std::fs::File;
+//! 
+//! let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];
+//! let mut frame = Frame::default();
+//! // Generate checkerboard lattice
+//! for (i, j) in (0..10).zip(0..10) {
+//! 	frame.buffer.push(if (i * j) % 2 == 0 {
+//! 		1
+//! 	} else {
+//! 		0
+//! 	})
+//! }
+//! let mut file = File::create("test.gif").unwrap();
+//! let mut encoder = Encoder::new(&mut file, 100, 100);
+//! encoder.write_global_palette(color_map).unwrap().write_frame(&frame).unwrap();
+//! ```
+//! 
+//! ## C API
+
+// TODO: make this compile
+// ```
+// use gif::{Frame, Encoder};
+// use std::fs::File;
+// let color_map = &[0, 0, 0, 0xFF, 0xFF, 0xFF];
+// let mut frame = Frame::default();
+// // Generate checkerboard lattice
+// for (i, j) in (0..10).zip(0..10) {
+// 	frame.buffer.push(if (i * j) % 2 == 0 {
+// 		1
+// 	} else {
+// 		0
+// 	})
+// }
+// # (|| {
+// {
+// let mut file = try!(File::create("test.gif"));
+// let mut encoder = Encoder::new(&mut file, 100, 100);
+// try!(encoder.write_global_palette(color_map)).write_frame(&frame)
+// }
+// # })().unwrap();
+// ```
+
 #![feature(collections)]
 #![feature(core)]
 #![feature(box_syntax)]
