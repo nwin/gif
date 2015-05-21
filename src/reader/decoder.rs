@@ -9,6 +9,7 @@ use lzw;
 
 use traits::{HasParameters, Parameter};
 use types::{Frame, Block};
+use types::{DisposalMethod};
 
 /// Images get converted to RGBA
 pub const N_CHANNELS: usize = 4;
@@ -364,7 +365,7 @@ impl Decoder {
                         }
                         self.current_frame().needs_user_input =
                             control_flags & 0b10 != 0;
-                        self.current_frame().dispose = match num::FromPrimitive::from_u8(
+                        self.current_frame().dispose = match DisposalMethod::from_u8(
                             (control_flags & 0b11100) >> 2
                         ) {
                             Some(method) => method,

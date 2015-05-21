@@ -1,23 +1,27 @@
 //! Common types used both by decoder and encoder
+use std::mem;
 
-/// Disposal methods
-/// ### FIXME: NOT DOCS YET DUE TO RUST BUG
-enum_from_primitive!{
+/// Disposal method
 #[derive(Debug, Copy, Clone)]
 pub enum DisposalMethod {
-    // FIXME enum_from_primitive and make this a doc-comment
-    // Decoder is not required to take any action.
+    /// Decoder is not required to take any action.
     Any = 0,
-    // FIXME enum_from_primitive and make this a doc-comment
-    // Do not dispose.
+    /// Do not dispose.
     Keep = 1,
-    // FIXME enum_from_primitive and make this a doc-comment
-    // Restore to background color.
+    /// Restore to background color.
     Background = 2,
-    // FIXME enum_from_primitive and make this a doc-comment
-    // Restore to previous.
+    /// Restore to previous.
     Previous = 3,
 }
+
+impl DisposalMethod {
+    pub fn from_u8(n: u8) -> Option<DisposalMethod> {
+        if n <= 3 {
+            Some(unsafe { mem::transmute(n) })
+        } else {
+            None
+        }
+    }
 }
 
 /// Known block types
@@ -41,7 +45,7 @@ pub enum Extension {
 }
 }
 
-/// A frame
+/// A GIF frame
 #[derive(Debug)]
 pub struct Frame {
     pub delay: u16,
