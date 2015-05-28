@@ -1,10 +1,12 @@
 //! Common types used both by decoder and encoder
 use std::mem;
+use std::borrow::Cow;
 
 /// Disposal method
 #[derive(Debug, Copy, Clone)]
+#[repr(u8)]
 pub enum DisposalMethod {
-    /// Decoder is not required to take any action.
+    /// StreamingDecoder is not required to take any action.
     Any = 0,
     /// Do not dispose.
     Keep = 1,
@@ -46,11 +48,11 @@ pub enum Extension {
 }
 
 /// A GIF frame
-#[derive(Debug)]
-pub struct Frame {
+#[derive(Debug, Clone)]
+pub struct Frame<'a> {
     pub delay: u16,
     pub dispose: DisposalMethod,
-    pub transparent: Option<usize>,
+    pub transparent: Option<u8>,
     pub needs_user_input: bool,
     pub top: u16,
     pub left: u16,
@@ -58,11 +60,11 @@ pub struct Frame {
     pub height: u16,
     pub interlaced: bool,
     pub palette: Option<Vec<u8>>,
-    pub buffer: Vec<u8>
+    pub buffer: Cow<'a, [u8]>
 }
 
-impl Default for Frame {
-    fn default() -> Frame {
+impl<'a> Default for Frame<'a> {
+    fn default() -> Frame<'a> {
         Frame {
             delay: 0,
             dispose: DisposalMethod::Any,
@@ -74,7 +76,7 @@ impl Default for Frame {
             height: 0,
             interlaced: false,
             palette: None,
-            buffer: Vec::new()
+            buffer: Cow::Borrowed(&[])
         }
     }
 }

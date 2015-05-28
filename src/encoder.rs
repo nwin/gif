@@ -14,7 +14,7 @@ pub enum ExtensionData {
 
 impl ExtensionData {
 	pub fn new_control_ext(delay: u16, dispose: DisposalMethod, 
-						   needs_user_input: bool, trns: Option<usize>) -> ExtensionData {
+						   needs_user_input: bool, trns: Option<u8>) -> ExtensionData {
 		let mut flags = 0;
 		let trns = match trns {
 			Some(trns) => {

@@ -1,5 +1,7 @@
 use std::cmp;
+use std::mem;
 use std::default::Default;
+use std::rc::Rc;
 
 use std::io;
 use std::io::prelude::*;
@@ -11,8 +13,6 @@ use traits::{HasParameters, Parameter};
 use types::{Frame, Block};
 use types::{DisposalMethod};
 
-/// Images get converted to RGBA
-pub const N_CHANNELS: usize = 4;
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
 
@@ -29,26 +29,6 @@ impl From<io::Error> for DecodingError {
     }
 }
 
-/// Output mode for the image data
-/// ### FIXME: NOT DOCS YET DUE TO RUST BUG
-enum_from_primitive!{
-#[derive(PartialEq, Debug)]
-pub enum ColorOutput {
-    // FIXME enum_from_primitive and make this a doc-comment
-    // The decoder expands the image data to 32bit RGBA
-    TrueColor,
-    // FIXME enum_from_primitive and make this a doc-comment
-    // The decoder returns the raw indexed data*/
-    Indexed,
-}
-}
-
-impl Parameter<Decoder> for ColorOutput {
-    fn set_param(self, this: &mut Decoder) {
-        this.color_output = self
-    }
-}
-
 /// Configures how extensions should be handled
 #[derive(PartialEq, Debug)]
 pub enum Extensions {
@@ -59,8 +39,8 @@ pub enum Extensions {
     Skip
 }
 
-impl Parameter<Decoder> for Extensions {
-    fn set_param(self, this: &mut Decoder) {
+impl Parameter<StreamingDecoder> for Extensions {
+    fn set_param(self, this: &mut StreamingDecoder) {
         this.skip_extensions = match self {
             Extensions::Skip => true,
             Extensions::Save => false,
@@ -69,21 +49,16 @@ impl Parameter<Decoder> for Extensions {
     }
 }
 
-
-/// Indicated the progress of decoding. Used for block-wise reading
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum Progress {
-    Start,
-    BlockStart,
-    ExtSubBlockFinished,
-    DataStart,
-    DataEnd,
-    Trailer
-}
-
 /// Indicates whether a certain object has been decoded
 pub enum Decoded<'a> {
-    Frame(&'a Frame),
+    Nothing,
+    Trailer,
+    SubBlockFinished(&'a [u8]),
+    BlockFinished(&'a [u8]),
+    GlobalPalette(Rc<Vec<u8>>),
+    Frame(&'a Frame<'static>),
+    Data(&'a [u8]),
+    DataEnd,
 
 }
 
@@ -96,13 +71,12 @@ enum State {
     Byte(ByteValue),
     GlobalPalette(usize),
     BlockStart(Option<Block>),
-    AwaitBlockEnd,
     BlockEnd(u8),
     ExtensionBlock(u8),
     SkipBlock(usize),
     LocalPalette(usize),
     LzwInit(u8),
-    DecodeSubBlock(Box<lzw::Decoder<lzw::LsbReader>>, usize),
+    DecodeSubBlock(usize),
     FrameDecoded,
     Trailer
 }
@@ -141,106 +115,78 @@ enum ByteValue {
 
 /// GIF decoder which supports streaming
 #[derive(Debug)]
-pub struct Decoder {
+pub struct StreamingDecoder {
     state: Option<State>,
-    progress: Progress,
-    color_output: ColorOutput,
+    lzw_reader: Option<lzw::Decoder<lzw::LsbReader>>,
     skip_extensions: bool,
     version: &'static str,
     width: u16,
     height: u16,
-    global_color_table: Vec<u8>,
+    global_color_table: Rc<Vec<u8>>,
     background_color: [u8; 4],
     /// ext buffer
     ext: (u8, Vec<u8>),
     /// Frame data
-    current: Option<usize>,
-    frames: Vec<Frame>
+    current: Option<Frame<'static>>,
 }
 
-impl HasParameters for Decoder {}
+impl HasParameters for StreamingDecoder {}
 
-impl Decoder {
-    pub fn new() -> Decoder {
-        Decoder {
+impl StreamingDecoder {
+    pub fn new() -> StreamingDecoder {
+        StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
-            progress: Progress::Start,
-            color_output: ColorOutput::Indexed,
+            lzw_reader: None,
             skip_extensions: true,
             version: "",
             width: 0,
             height: 0,
-            global_color_table: Vec::new(),
+            global_color_table: Rc::new(Vec::new()),
             background_color: [0, 0, 0, 0xFF],
             ext: (0, Vec::with_capacity(256)), // 0xFF + 1 byte length
-            current: None,
-            frames: Vec::new()
+            current: None
         }
     }
     
-    pub fn update(&mut self, buf: &[u8]) -> Result<usize, DecodingError> {
-        self.update_until(buf, Progress::Trailer)
-    }
-    
-    pub fn update_until(&mut self, mut buf: &[u8], stop_at: Progress)
-    -> Result<usize, DecodingError> {
+    pub fn update<'a>(&'a mut self, mut buf: &[u8])
+    -> Result<(usize, Decoded<'a>), DecodingError> {
+        // NOTE: Do not change the function signature without double-checking the
+        //       unsafe block!
         let len = buf.len();
         while buf.len() > 0 && self.state.is_some() {
-            if self.progress == stop_at {
-                return Ok(len-buf.len())
-            }
             match self.next_state(buf) {
-                Ok(bytes) => {
+                Ok((bytes, Decoded::Nothing)) => {
                     buf = &buf[bytes..]
                 }
-                Err(err) => return Err(err)
-            }
-        }
-        Ok(len-buf.len())
-    }
-
-    pub fn decode_bytes(&mut self, mut buf: &[u8])
-    -> Result<(usize, Option<Decoded>), DecodingError> {
-        let len = buf.len();
-        let mut decoded = None;
-        while buf.len() > 0 {
-            match self.state {
-                None => break,
-                Some(FrameDecoded) => {
-                    decoded = Some(Decoded::Frame(
-                        &self.frames[self.frames.len()-1]
-                    ));
+                Ok((bytes, Decoded::Trailer)) => {
+                    buf = &buf[bytes..];
                     break
                 }
-                _ => ()
-            }
-            match self.next_state(buf) {
-                Ok(bytes) => {
-                    buf = &buf[bytes..]
+                Ok((bytes, result)) => {
+                    buf = &buf[bytes..];
+                    return Ok(
+                        (len-buf.len(), 
+                        // This transmute just casts the lifetime away. Since Rust only 
+                        // has SESE regions, this early return cannot be worked out and
+                        // such that the borrow region of self includes the whole block.
+                        // The explixit lifetimes in the function signature ensure that
+                        // this is safe.
+                        // ### NOTE
+                        // To check that everything is sound, return the result without
+                        // the match (e.g. `return Ok(try!(self.next_state(buf)))`). If
+                        // it compiles the returned lifetime is correct.
+                        unsafe { 
+                            mem::transmute::<Decoded, Decoded>(result)
+                        }
+                    ))
                 }
                 Err(err) => return Err(err)
             }
         }
-        Ok((len-buf.len(), decoded))
+        Ok((len-buf.len(), Decoded::Nothing))
+        
     }
     
-    pub fn progress(&self) -> Progress {
-        self.progress
-    }
-    
-    pub fn width(&self) -> u16 {
-        self.width
-    }
-    
-    pub fn height(&self) -> u16 {
-        self.height
-    }
-
-    /// The global color palette
-    pub fn global_palette(&self) -> &[u8] {
-        &*self.global_color_table
-    }
-
     /// Index of the background color in the global palette
     pub fn bg_color(&self) -> usize {
         self.global_color_table.chunks(PLTE_CHANNELS).position(
@@ -248,33 +194,27 @@ impl Decoder {
         ).unwrap_or(0) as usize
     }
     
-    pub fn frames(&self) -> &[Frame] {
-        &*self.frames
-    }
-
     pub fn last_ext(&self) -> (u8, &[u8]) {
         (self.ext.0, &*self.ext.1)
     }
-    
-    /// Returns the current block if the decoder is at the start
-    // a block
-    pub fn _current_block(&self) -> Option<Block> {
-        match self.state {
-            Some(BlockStart(block)) => block,
-            _ => None
-        }
 
-    }
-
-    fn next_state(&mut self, buf: &[u8]) -> Result<usize, DecodingError> {
+    fn next_state<'a>(&'a mut self, buf: &[u8]) -> Result<(usize, Decoded<'a>), DecodingError> {
         macro_rules! goto (
             ($n:expr, $state:expr) => ({
                 self.state = Some($state); 
-                Ok($n)
+                Ok(($n, Decoded::Nothing))
             });
             ($state:expr) => ({
                 self.state = Some($state); 
-                Ok(1)
+                Ok((1, Decoded::Nothing))
+            });
+            ($n:expr, $state:expr, emit $res:expr) => ({
+                self.state = Some($state); 
+                Ok(($n, $res))
+            });
+            ($state:expr, emit $res:expr) => ({
+                self.state = Some($state); 
+                Ok((1, $res))
             })
         );
         
@@ -314,23 +254,23 @@ impl Decoder {
                     (Delay, delay) => {
                         self.ext.1.push(value as u8);
                         self.ext.1.push(b);
-                        self.current_frame().delay = delay;
+                        self.current_frame_mut().delay = delay;
                         goto!(Byte(ByteValue::TransparentIdx))
                     },
                     (ImageLeft, left) => {
-                        self.current_frame().left = left;
+                        self.current_frame_mut().left = left;
                         goto!(U16(U16Value::ImageTop))
                     },
                     (ImageTop, top) => {
-                        self.current_frame().top = top;
+                        self.current_frame_mut().top = top;
                         goto!(U16(U16Value::ImageWidth))
                     },
                     (ImageWidth, width) => {
-                        self.current_frame().width = width;
+                        self.current_frame_mut().width = width;
                         goto!(U16(U16Value::ImageHeight))
                     },
                     (ImageHeight, height) => {
-                        self.current_frame().height = height;
+                        self.current_frame_mut().height = height;
                         goto!(Byte(ByteValue::ImageFlags))
                     }
                 }
@@ -342,7 +282,7 @@ impl Decoder {
                         let global_table = b & 0x80 != 0;
                         let entries = if global_table {
                             let entries = PLTE_CHANNELS*(1 << ((b & 0b111) + 1) as usize);
-                            self.global_color_table.reserve_exact(entries);
+                            self.global_color_table.make_unique().reserve_exact(entries);
                             entries
                         } else {
                             0usize
@@ -361,11 +301,11 @@ impl Decoder {
                         let control_flags = b;
                         if control_flags & 1 != 0 {
                             // Set to Some(...), gets overwritten later
-                            self.current_frame().transparent = Some(0)
+                            self.current_frame_mut().transparent = Some(0)
                         }
-                        self.current_frame().needs_user_input =
+                        self.current_frame_mut().needs_user_input =
                             control_flags & 0b10 != 0;
-                        self.current_frame().dispose = match DisposalMethod::from_u8(
+                        self.current_frame_mut().dispose = match DisposalMethod::from_u8(
                             (control_flags & 0b11100) >> 2
                         ) {
                             Some(method) => method,
@@ -377,22 +317,22 @@ impl Decoder {
                     }
                     TransparentIdx => {
                         self.ext.1.push(b);
-                        if let Some(ref mut idx) = self.current_frame().transparent {
-                             *idx = b as usize
+                        if let Some(ref mut idx) = self.current_frame_mut().transparent {
+                             *idx = b
                         }
-                        self.progress == Progress::ExtSubBlockFinished;
-                        goto!(AwaitBlockEnd)
+                        goto!(SkipBlock(0))
+                        //goto!(AwaitBlockEnd)
                     }
                     ImageFlags => {
                         let local_table = (b & 0b1000_0000) != 0;
                         let interlaced   = (b & 0b0100_0000) != 0;
                         let table_size  =  b & 0b0000_0111;
                         
-                        self.current_frame().interlaced = interlaced;
+                        self.current_frame_mut().interlaced = interlaced;
                         if local_table {
                             let entries = PLTE_CHANNELS * (1 << (table_size + 1));
                             
-                            self.current_frame().palette =
+                            self.current_frame_mut().palette =
                                 Some(Vec::with_capacity(entries));
                             goto!(LocalPalette(entries))
                         } else {
@@ -405,7 +345,7 @@ impl Decoder {
             GlobalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.global_color_table.push_all(&buf[..n]);
+                    self.global_color_table.make_unique().push_all(&buf[..n]);
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
@@ -415,8 +355,9 @@ impl Decoder {
                         },
                         None => self.background_color[0] = 0
                     }
-                    self.progress = Progress::BlockStart;
-                    goto!(BlockStart(num::FromPrimitive::from_u8(b)))
+                    goto!(BlockStart(num::FromPrimitive::from_u8(b)), emit Decoded::GlobalPalette(
+                        self.global_color_table.clone()
+                    ))
                 }
             }
             BlockStart(type_) => {
@@ -434,13 +375,11 @@ impl Decoder {
                     ))}
                 }
             }
-            AwaitBlockEnd => goto!(BlockEnd(b)),
             BlockEnd(terminator) => {
                 if terminator == 0 {
                     if b == Block::Trailer as u8 {
                         goto!(0, Trailer)
                     } else {
-                        self.progress = Progress::BlockStart;
                         goto!(BlockStart(num::FromPrimitive::from_u8(b)))
                     }
                 } else {
@@ -476,11 +415,9 @@ impl Decoder {
                     goto!(n, SkipBlock(left - n))
                 } else {
                     if b == 0 {
-                        self.progress == Progress::ExtSubBlockFinished;
-                        goto!(BlockEnd(b))
+                        goto!(BlockEnd(b), emit Decoded::BlockFinished(&self.ext.1))
                     } else {
-                        self.progress == Progress::ExtSubBlockFinished;
-                        goto!(SkipBlock(b as usize))
+                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(&self.ext.1))
                     }
                     
                 }
@@ -489,7 +426,7 @@ impl Decoder {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
                     
-                    self.current_frame().palette
+                    self.current_frame_mut().palette
                         .as_mut().unwrap().push_all(&buf[..n]);
                     goto!(n, LocalPalette(left - n))
                 } else {
@@ -497,31 +434,21 @@ impl Decoder {
                 }
             }
             LzwInit(code_size) => {
-                self.progress = Progress::DataStart;
-                goto!(DecodeSubBlock(
-                    box lzw::Decoder::new(lzw::LsbReader::new(), code_size),
-                    b as usize
-                ))
+                self.lzw_reader = Some(lzw::Decoder::new(lzw::LsbReader::new(), code_size));
+                goto!(DecodeSubBlock(b as usize), emit Decoded::Frame(self.current_frame_mut()))
             }
-            DecodeSubBlock(mut decoder, left) => {;
-                let n = cmp::min(left, buf.len());
+            DecodeSubBlock(left) => {
                 if left > 0 {
-                    let mut buf = &buf[..n];
-                    while buf.len() > 0 {
-                        let (consumed, bytes) = try!(decoder.decode_bytes(buf));
-                        self.current_frame().buffer.push_all(bytes);
-                        buf = &buf[consumed..];
-                    }
-                    goto!(n, DecodeSubBlock(decoder, left - n))
-                } else if b != 0 { // decode next sub-block
-                    goto!(DecodeSubBlock(decoder, b as usize))
-                } else { // end of image data reached
-                    if self.color_output == ColorOutput::TrueColor {
-                        self.expand_palette();
-                    }
+                    let n = cmp::min(left, buf.len());
+                    let decoder = self.lzw_reader.as_mut().unwrap();
+                    let (consumed, bytes) = try!(decoder.decode_bytes(&buf[..n]));
+                    goto!(consumed, DecodeSubBlock(left - consumed), emit Decoded::Data(bytes))
+                }  else if b != 0 { // decode next sub-block
+                    goto!(DecodeSubBlock(b as usize))
+                } else {
+                    // end of image data reached
                     self.current = None;
-                    self.progress = Progress::DataEnd;
-                    goto!(0, FrameDecoded)
+                    goto!(0, FrameDecoded, emit Decoded::DataEnd)
                 }
             }
             FrameDecoded => {
@@ -529,14 +456,12 @@ impl Decoder {
             }
             Trailer => {
                 self.state = None;
-                self.progress = Progress::Trailer;
-                Ok(1)
+                Ok((1, Decoded::Trailer))
                 //panic!("EOF {:?}", self)
             }
         }
     }
     
-    #[inline]
     fn read_control_extension(&mut self, b: u8) -> Result<State, DecodingError> {
         self.add_frame();
         self.ext.1.push(b);
@@ -550,109 +475,17 @@ impl Decoder {
     
     fn add_frame(&mut self) {
         if self.current.is_none() {
-            self.current = Some(self.frames.len());
-            self.frames.push(Default::default());
-            let required_bytes = self.width as usize * self.height as usize;
-            self.current_frame().buffer.reserve(required_bytes);
+            self.current = Some(Frame::default())
         }
     }
     
     #[inline(always)]
-    pub fn current_frame(&mut self) -> &mut Frame {
-        let c = self.current.unwrap_or(0);
-        &mut self.frames[c]
+    pub fn current_frame_mut<'a>(&'a mut self) -> &'a mut Frame<'static> {
+        self.current.as_mut().unwrap()
     }
     
-    pub fn expand_palette(&mut self) {
-        {
-            let required_bytes = N_CHANNELS * self.width as usize * self.height as usize;
-            let frame = &mut self.current_frame();
-            let capacity = frame.buffer.capacity();
-            let new_size = cmp::max(capacity, required_bytes);
-            frame.buffer.reserve(new_size - capacity);
-            for _ in 0..(new_size - capacity) {
-                frame.buffer.push(0)
-            }
-            // unsafe { frame.buffer.set_len(required_bytes) }
-        }
-        let c = self.current.unwrap_or(0);
-        let frame = &mut self.frames[c];
-        expand_palette(
-            &mut *frame.buffer,
-            match frame.palette {
-                Some(ref table) => &*table,
-                None => &*self.global_color_table,
-            },
-            None
-        );
-    }
-}
-
-/// Naive version, should be optimized for speed
-fn expand_palette(buf: &mut [u8], palette: &[u8], transparent: Option<u8>) {
-    //use std::iter::RandomAccessIterator;
-    for i in (0..buf.len()/N_CHANNELS).rev() {
-        let plte_idx = buf[i] as usize;
-        //if let Some(colors) = palette.chunks(PLTE_CHANNELS).nth(plte_idx) { // slow...
-        //if let Some(colors) = palette.chunks(PLTE_CHANNELS).idx(plte_idx) { // faster...
-        let plte_offset = PLTE_CHANNELS*plte_idx;
-        if palette.len() >= plte_offset + PLTE_CHANNELS {
-            let colors = &palette[plte_offset..plte_offset + PLTE_CHANNELS];
-            let idx = i * N_CHANNELS;
-            for j in 0..N_CHANNELS-1 {
-                buf[idx+j] = colors[j];
-            }
-            buf[idx+N_CHANNELS-1] = if let Some(transparent) = transparent {
-                if plte_idx == transparent as usize {
-                    0x00
-                } else {
-                    0xFF
-                }
-            } else {
-                0xFF
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    extern crate test;
-
-    use std::fs::File;
-    use std::io::prelude::*;
-    
-    use super::Decoder;
-    
-    #[bench]
-    fn bench_tiny(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            test::black_box(Decoder::new().update(&*data).ok().unwrap())
-        });
-        let mut decoder = Decoder::new();
-        decoder.update(&*data).ok().unwrap();
-        b.bytes = decoder.frames[0].buffer.len() as u64
-    }
-    
-    #[bench]
-    fn bench_big(b: &mut test::Bencher) {
-        let mut data = Vec::new();
-        File::open("tests/samples/moon_impact.gif").unwrap().read_to_end(&mut data).unwrap();
-        b.iter(|| {
-            test::black_box(Decoder::new().update(&*data).ok().unwrap())
-        });
-        let mut decoder = Decoder::new();
-        decoder.update(&*data).ok().unwrap();
-        b.bytes = (decoder.frames.len() * decoder.frames[0].buffer.len()) as u64
-    }
-    
-    #[test]
-    fn test_simple() {
-        let mut data = Vec::new();
-        File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
-        let mut decoder = Decoder::new();
-        decoder.update(&*data).unwrap();
+    #[inline(always)]
+    pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
+        self.current.as_ref().unwrap()
     }
 }
