@@ -11,9 +11,8 @@ use util;
 
 mod decoder;
 pub use self::decoder::{
-    StreamingDecoder, Decoded, DecodingError, Extensions
+    PLTE_CHANNELS, StreamingDecoder, Decoded, DecodingError, Extensions
 };
-
 
 const N_CHANNELS: usize = 4;
 
@@ -217,6 +216,7 @@ impl<R> Reader<R> where R: Read {
         let buf_len = self.buffer.len();
         if buf_len > 0 {
             let (len, channels) = handle_data!(&self.buffer);
+            // This is WRONG!!!! Cuts form the wrong side…
             self.buffer.truncate(buf_len-len);
             let buf_ = buf; buf = &mut buf_[len*channels..];
             if buf.len() == 0 {
@@ -267,17 +267,17 @@ impl<R> Reader<R> where R: Read {
 
     /// Width of the image
     pub fn width(&self) -> u16 {
-        unimplemented!()
+        self.decoder.decoder.width()
     }
 
     /// Height of the image
     pub fn height(&self) -> u16 {
-        unimplemented!()
+        self.decoder.decoder.height()
     }
 
     /// Index of the background color in the global palette
     pub fn bg_color(&self) -> usize {
-        unimplemented!();
+        self.decoder.decoder.bg_color()
     }
 }
 
@@ -351,6 +351,7 @@ mod test {
 mod c_interface {
     use std::io::prelude::*;
     use std::ptr;
+    use std::borrow::Cow;
     use num;
 
     use libc::c_int;
@@ -360,7 +361,7 @@ mod c_interface {
     use c_api::{self, GifWord};
     use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};
 
-    use super::decoder::{Progress, DecodingError};
+    use super::decoder::{Decoded, DecodingError};
 
     use super::{Reader};
 
@@ -371,42 +372,46 @@ mod c_interface {
     }
 
     impl<R: Read> CInterface for Reader<R> {
-        fn read_screen_desc(&mut self, this: &mut c_api::GifFileType) -> Result<(), DecodingError> {
-            if self.decoder.progress() == Progress::Start {
-                try!(self.read_until(Progress::BlockStart));
-                this.SWidth = self.width() as GifWord;
-                this.SHeight = self.height() as GifWord;
-                this.SColorResolution = 255;//self.global_palette().len() as GifWord;
-                this.SBackGroundColor = self.bg_color() as GifWord;
-                this.AspectByte = 0;
-                self.offset = 0;
-            }
-            Ok(())
+        fn read_screen_desc(&mut self, this: &mut c_api::GifFileType) {
+            this.SWidth = self.width() as GifWord;
+            this.SHeight = self.height() as GifWord;
+            this.SColorResolution = 255;//self.global_palette().len() as GifWord;
+            this.SBackGroundColor = self.bg_color() as GifWord;
+            this.AspectByte = 0;
+            self.offset = 0;
         }
 
         fn current_image_buffer(&mut self) -> Result<(&[u8], &mut usize), DecodingError> {
-            try!(self.seek_to(Progress::DataEnd));
-            Ok((&self.decoder.current_frame().buffer, &mut self.offset))
+            if let Cow::Borrowed(_) = self.current_frame.buffer {
+                try!(self.read_next_frame());
+            }
+            Ok((&self.current_frame.buffer, &mut self.offset))
         }
 
-
+/*
         fn seek_to(&mut self, position: Progress) -> Result<(), DecodingError> {
             self.read_until(position)
         }
-
-        fn last_ext(&self) -> (u8, &[u8]) {
-            self.decoder.last_ext()
+*/
+        fn last_ext(&self) -> (u8, &[u8], bool) {
+            self.decoder.decoder.last_ext()
         }
 
         fn next_record_type(&mut self) -> Result<Block, DecodingError> {
-            try!(self.read_until(Progress::BlockStart));
-            if let Some(block) = self.decoder._current_block() {
-                Ok(block)
-            } else {
-                Err(DecodingError::Internal("Not at expected block."))
+            loop {
+                match try!(self.decoder.decode_next()) {
+                    Some(Decoded::BlockStart(type_)) => return Ok(type_),
+                    Some(_) => (),
+                    None => return Ok(Block::Trailer)
+                }
             }
         }
+    
+        fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError> {
+            self.decoder.decode_next()
+        }
 
+        /*
         unsafe fn read_to_end(&mut self, this: &mut c_api::GifFileType) -> Result<(), DecodingError> {
             try!(self.read_screen_desc(this));
             try!(self.read_to_end());
@@ -431,6 +436,6 @@ mod c_interface {
             }
             this.SavedImages = images;
             Ok(())
-        }
+        }*/
     }
 }

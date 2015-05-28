@@ -6,18 +6,19 @@ use std::slice;
 use libc::{malloc, size_t, c_int, read, close};
 
 use types::Block;
-use reader::{Progress, DecodingError, PLTE_CHANNELS};
+use reader::{Decoded, DecodingError, PLTE_CHANNELS};
 use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, _Bool,
 		   InputFunc
 };
 
 pub trait CInterface {
-    fn read_screen_desc(&mut self, &mut GifFileType) -> Result<(), DecodingError>;
+    fn read_screen_desc(&mut self, &mut GifFileType);
 	fn current_image_buffer(&mut self) -> Result<(&[u8], &mut usize), DecodingError>;
-    fn seek_to(&mut self, position: Progress) -> Result<(), DecodingError>;
-    fn last_ext(&self) -> (u8, &[u8]);
+    //fn seek_to(&mut self, position: Progress) -> Result<(), DecodingError>;
+    fn last_ext(&self) -> (u8, &[u8], bool);
     fn next_record_type(&mut self) -> Result<Block, DecodingError>;
-    unsafe fn read_to_end(&mut self, &mut GifFileType) -> Result<(), DecodingError>;
+    fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError>;
+    //unsafe fn read_to_end(&mut self, &mut GifFileType) -> Result<(), DecodingError>;
 }
 
 pub unsafe fn saved_images_new(count: usize) -> *mut SavedImage {

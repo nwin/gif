@@ -53,8 +53,9 @@ impl Parameter<StreamingDecoder> for Extensions {
 pub enum Decoded<'a> {
     Nothing,
     Trailer,
-    SubBlockFinished(&'a [u8]),
-    BlockFinished(&'a [u8]),
+    BlockStart(Block),
+    SubBlockFinished(u8, &'a [u8]),
+    BlockFinished(u8, &'a [u8]),
     GlobalPalette(Rc<Vec<u8>>),
     Frame(&'a Frame<'static>),
     Data(&'a [u8]),
@@ -125,7 +126,7 @@ pub struct StreamingDecoder {
     global_color_table: Rc<Vec<u8>>,
     background_color: [u8; 4],
     /// ext buffer
-    ext: (u8, Vec<u8>),
+    ext: (u8, Vec<u8>, bool),
     /// Frame data
     current: Option<Frame<'static>>,
 }
@@ -143,7 +144,7 @@ impl StreamingDecoder {
             height: 0,
             global_color_table: Rc::new(Vec::new()),
             background_color: [0, 0, 0, 0xFF],
-            ext: (0, Vec::with_capacity(256)), // 0xFF + 1 byte length
+            ext: (0, Vec::with_capacity(256), true), // 0xFF + 1 byte length
             current: None
         }
     }
@@ -194,8 +195,28 @@ impl StreamingDecoder {
         ).unwrap_or(0) as usize
     }
     
-    pub fn last_ext(&self) -> (u8, &[u8]) {
-        (self.ext.0, &*self.ext.1)
+    pub fn last_ext(&self) -> (u8, &[u8], bool) {
+        (self.ext.0, &*self.ext.1, self.ext.2)
+    }
+    
+    #[inline(always)]
+    pub fn current_frame_mut<'a>(&'a mut self) -> &'a mut Frame<'static> {
+        self.current.as_mut().unwrap()
+    }
+    
+    #[inline(always)]
+    pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
+        self.current.as_ref().unwrap()
+    }
+
+    /// Width of the image
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    /// Height of the image
+    pub fn height(&self) -> u16 {
+        self.height
     }
 
     fn next_state<'a>(&'a mut self, buf: &[u8]) -> Result<(usize, Decoded<'a>), DecodingError> {
@@ -365,10 +386,10 @@ impl StreamingDecoder {
                 match type_ {
                     Some(Image) => {
                         self.add_frame();
-                        goto!(U16Byte1(U16Value::ImageLeft, b))
+                        goto!(U16Byte1(U16Value::ImageLeft, b), emit Decoded::BlockStart(Image))
                     }
-                    Some(Extension) => goto!(ExtensionBlock(b)),
-                    Some(Trailer) => goto!(0, State::Trailer),
+                    Some(Extension) => goto!(ExtensionBlock(b), emit Decoded::BlockStart(Extension)),
+                    Some(Trailer) => goto!(0, State::Trailer, emit Decoded::BlockStart(Trailer)),
                     None => {
                         return Err(DecodingError::Format(
                         "unknown block type encountered"
@@ -415,9 +436,11 @@ impl StreamingDecoder {
                     goto!(n, SkipBlock(left - n))
                 } else {
                     if b == 0 {
-                        goto!(BlockEnd(b), emit Decoded::BlockFinished(&self.ext.1))
+                        self.ext.2 = true;
+                        goto!(BlockEnd(b), emit Decoded::BlockFinished(self.ext.0, &self.ext.1))
                     } else {
-                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(&self.ext.1))
+                        self.ext.2 = false;
+                        goto!(SkipBlock(b as usize), emit Decoded::SubBlockFinished(self.ext.0,&self.ext.1))
                     }
                     
                 }
@@ -477,15 +500,5 @@ impl StreamingDecoder {
         if self.current.is_none() {
             self.current = Some(Frame::default())
         }
-    }
-    
-    #[inline(always)]
-    pub fn current_frame_mut<'a>(&'a mut self) -> &'a mut Frame<'static> {
-        self.current.as_mut().unwrap()
-    }
-    
-    #[inline(always)]
-    pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
-        self.current.as_ref().unwrap()
     }
 }

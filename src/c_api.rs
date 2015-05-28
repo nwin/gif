@@ -15,7 +15,7 @@ use std::slice;
 
 use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
-use reader::{Reader, Progress};
+use reader::{Decoder, Reader, Decoded};
 use c_api_utils::{CInterface, CFile, FnInputFile};
 
 #[repr(u8)]
@@ -192,15 +192,12 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
         )),
         err, D_GIF_ERR_OPEN_FAILED, ptr::null_mut()
     );
-    let mut decoder = Reader::new(file).into_c_interface();
+    let mut decoder = try_capi!(
+        Decoder::new(file).read_info(),
+        err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
+    ).into_c_interface();
     let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
-    try_capi!(
-        decoder.read_screen_desc(&mut *this),
-        err, D_GIF_ERR_READ_FAILED, {
-            let _: Box<GifFileType> = Box::from_raw(this);
-            ptr::null_mut()
-        }
-    );
+    decoder.read_screen_desc(&mut *this);
     let decoder = boxed::into_raw(box boxed::into_raw(decoder));
     (*this).Private = mem::transmute(decoder);
     this
@@ -208,21 +205,18 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
 
 #[no_mangle] pub unsafe extern "C" 
 fn DGifOpenFileHandle(fp: c_int, err: *mut c_int) -> *mut GifFileType {
-    let mut decoder = Reader::new(CFile::new(fp)).into_c_interface();
+    let mut decoder = try_capi!(
+        Decoder::new(CFile::new(fp)).read_info(),
+        err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
+    ).into_c_interface();
     let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
-    try_capi!(
-        decoder.read_screen_desc(&mut *this),
-        err, D_GIF_ERR_READ_FAILED,  {
-            let _: Box<GifFileType> = Box::from_raw(this);
-            ptr::null_mut()
-        }
-    );
+    decoder.read_screen_desc(&mut *this);
     let decoder = boxed::into_raw(box boxed::into_raw(decoder));
     (*this).Private = mem::transmute(decoder);
     this
 }
 
-
+/*
 #[no_mangle] pub unsafe extern "C" 
 fn DGifSlurp(this: *mut GifFileType) -> c_int {
     match try_get_decoder!(this).read_to_end(mem::transmute(this)) {
@@ -230,14 +224,13 @@ fn DGifSlurp(this: *mut GifFileType) -> c_int {
         Err(_) => GIF_ERROR
     }
 }
-
+*/
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut GifFileType {
     let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
     (*this).UserData = user_data;
-    let mut decoder = Reader::new(FnInputFile::new(read_fn, this)).into_c_interface();
-    try_capi!(
-        decoder.read_screen_desc(&mut *this),
+    let decoder = try_capi!(
+        Decoder::new(FnInputFile::new(read_fn, this)).read_info(),
         err, D_GIF_ERR_READ_FAILED, {
             // TODO: check if it is ok and expected to free GifFileType
             // This is unclear since the API exposes the whole struct to the read
@@ -245,7 +238,7 @@ fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut
             let _: Box<GifFileType> = Box::from_raw(this);
             ptr::null_mut()
         }
-    );
+    ).into_c_interface();
     let decoder = boxed::into_raw(box boxed::into_raw(decoder));
     (*this).Private = mem::transmute(decoder);
     this
@@ -275,13 +268,10 @@ fn DGifCloseFile(this: *mut GifFileType, _: *mut c_int)
 
 // legacy but needed API
 #[no_mangle] pub unsafe extern "C"
-fn DGifGetScreenDesc(this: *mut GifFileType) -> c_int {
-    match try_get_decoder!(this).read_screen_desc(mem::transmute(this)) {
-        Ok(()) => GIF_OK,
-        Err(_) => GIF_ERROR
-    }
+fn DGifGetScreenDesc(_: *mut GifFileType) -> c_int {
+    GIF_OK
 }
-
+/*
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetRecordType(this: *mut GifFileType, record_type: *mut GifRecordType) -> c_int {
     use types::Block::*;
@@ -293,14 +283,15 @@ fn DGifGetRecordType(this: *mut GifFileType, record_type: *mut GifRecordType) ->
     };
     GIF_OK
 }
-
+*/
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetImageDesc(this: *mut GifFileType) -> c_int {
-    match try_get_decoder!(this).seek_to(Progress::DataStart) {
-        Ok(()) => GIF_OK,
+    match try_get_decoder!(this).current_image_buffer() {
+        Ok(_) => GIF_OK,
         Err(_) => GIF_ERROR
     }
 }
+
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c_int {
     let (buffer, offset) = try_capi!(try_get_decoder!(this).current_image_buffer());
@@ -316,25 +307,30 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
 
 /// Returns the type of the extension and the first extension sub-block `(size, data...)`
 #[no_mangle] pub unsafe extern "C"
-fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_blocks: *mut *const GifByteType) -> c_int {
+fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mut *const GifByteType) -> c_int {
     use types::Block::*;
     let decoder = try_get_decoder!(this);
     match try_capi!(decoder.next_record_type()) {
         Image | Trailer => {
-            if ext_blocks != ptr::null_mut() {
-                *ext_blocks = ptr::null_mut();
+            if ext_block != ptr::null_mut() {
+                *ext_block = ptr::null_mut();
             }
             if ext_type != ptr::null_mut() {
                 *ext_type = 0;
             }
         }
         Extension => {
-            try_capi!(decoder.seek_to(Progress::ExtSubBlockFinished));
-            if ext_blocks != ptr::null_mut() {
-                *ext_blocks = decoder.last_ext().1.as_ptr();
-            }
-            if ext_type != ptr::null_mut() {
-                *ext_type = Extension as c_int;
+            match try_capi!(decoder.decode_next()) {
+                Some(Decoded::SubBlockFinished(type_, data))
+                | Some(Decoded::BlockFinished(type_, data)) => {
+                    if ext_block != ptr::null_mut() {
+                        *ext_block = data.as_ptr();
+                    }
+                    if ext_type != ptr::null_mut() {
+                        *ext_type = type_ as c_int;
+                    }
+                }
+                _ => return GIF_ERROR
             }
         }
     }
@@ -343,12 +339,26 @@ fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_blocks: *m
 
 /// Returns the next extension sub-block `(size, data...)`
 #[no_mangle] pub unsafe extern "C"
-fn DGifGetExtensionNext(_: *mut GifFileType, extension: *mut *mut GifByteType) -> c_int {
+fn DGifGetExtensionNext(this: *mut GifFileType, ext_block: *mut *const GifByteType) -> c_int {
     // TODO extract next sub block
-    if extension != ptr::null_mut() {
-        *extension = ptr::null_mut();
+    let mut decoder = try_get_decoder!(this);
+    if decoder.last_ext().2 {
+        if ext_block != ptr::null_mut() {
+            *ext_block = ptr::null_mut();
+        }
+        GIF_OK
+    } else {
+        match try_capi!(decoder.decode_next()) {
+            Some(Decoded::SubBlockFinished(_, data))
+            | Some(Decoded::BlockFinished(_, data)) => {
+                if ext_block != ptr::null_mut() {
+                    *ext_block = data.as_ptr();
+                }
+                GIF_OK
+            }
+            _ => GIF_ERROR
+        }
     }
-    GIF_OK
 }
 /*
 /// This function reallocs `ext_blocks` and copies `data`
