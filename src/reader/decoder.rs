@@ -50,6 +50,7 @@ impl Parameter<StreamingDecoder> for Extensions {
 }
 
 /// Indicates whether a certain object has been decoded
+#[derive(Debug)]
 pub enum Decoded<'a> {
     Nothing,
     Trailer,

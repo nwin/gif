@@ -9,21 +9,26 @@ repository = "https://github.com/nwin/gif.git"
 exclude = [
     "tests/*",
 ]
+
 [lib]
 name = "gif"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
 lzw = "0.5"
-libc = "0.1"
 num = "*"
 enum_primitive = "*"
 
-[dev-dependencies.image]
+[dev-dependencies]
 image = "0.3.7"
+glob = "*"
 
 [features]
-default = ["c_api", "raii_no_panic"]
+default = ["raii_no_panic"]
 
 raii_no_panic = []
-c_api = []
+c_api = ["libc"]
+
+[dependencies.libc]
+version = "0.1"
+optional = true

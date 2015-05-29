@@ -103,7 +103,7 @@ fn round_trip() {
 	let mut data = vec![];
 	File::open("tests/samples/sample_1.gif").unwrap().read_to_end(&mut data).unwrap();
 	let mut decoder = Decoder::new(&*data).read_info().unwrap();
-	let palette: Vec<u8> = decoder.palette().into();
+	let palette: Vec<u8> = decoder.palette().unwrap().into();
 	let frame = decoder.read_next_frame().unwrap().unwrap();
 	let mut data2 = vec![];
 	{
