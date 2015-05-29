@@ -13,11 +13,21 @@ use traits::WriteBytesExt;
 use common::{Block, Frame, Extension, DisposalMethod};
 use util;
 
+/// Extension data.
 pub enum ExtensionData {
-	Control { flags: u8, delay: u16, trns: u8 }
+    /// Control extension
+	Control { 
+	    /// Flags.
+	    flags: u8,
+	    /// Frame delay.
+	    delay: u16,
+	    /// Transparent index.
+	    trns: u8
+    }
 }
 
 impl ExtensionData {
+    /// Constructor for control extension data.
 	pub fn new_control_ext(delay: u16, dispose: DisposalMethod, 
 						   needs_user_input: bool, trns: Option<u8>) -> ExtensionData {
 		let mut flags = 0;

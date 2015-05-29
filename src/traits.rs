@@ -12,7 +12,7 @@ pub trait Parameter<Object> {
 /// Implemented for objects that have parameters.
 ///
 /// Provides a unified `set`-method to simplify the configuration.
-pub trait HasParameters: Sized {
+pub trait SetParameter: Sized {
     /// Sets `value` as a parameter of `self`.
     fn set<T: Parameter<Self>>(&mut self, value: T) -> &mut Self {
         value.set_param(self);

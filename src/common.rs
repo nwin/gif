@@ -83,16 +83,28 @@ impl Extension {
 /// A GIF frame
 #[derive(Debug, Clone)]
 pub struct Frame<'a> {
+    /// Frame delay.
     pub delay: u16,
+    /// Disposal method.
     pub dispose: DisposalMethod,
+    /// Transparent index (if available).
     pub transparent: Option<u8>,
+    /// True if the frame needs user input do be displayed.
     pub needs_user_input: bool,
+    /// Offset from the top border of the canvas.
     pub top: u16,
+    /// Offset from the left border of the canvas.
     pub left: u16,
+    /// Width of the frame.
     pub width: u16,
+    /// Height of the frame.
     pub height: u16,
+    /// True if the image is interlaced.
     pub interlaced: bool,
+    /// Frame local color palette if available.
     pub palette: Option<Vec<u8>>,
+    /// Buffer containing the image data.
+    /// Only indices unless configured differently.
     pub buffer: Cow<'a, [u8]>
 }
 

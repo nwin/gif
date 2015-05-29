@@ -5,7 +5,7 @@ use std::mem;
 use std::rc::Rc;
 use std::io::prelude::*;
 
-use traits::{Parameter, HasParameters};
+use traits::{Parameter, SetParameter};
 use common::Frame;
 use util;
 
@@ -28,9 +28,13 @@ where T: Parameter<StreamingDecoder>, R: Read {
 #[derive(PartialEq, Debug)]
 #[repr(u8)]
 pub enum ColorOutput {
-    /// The decoder expands the image data to 32bit RGBA
+    /// The decoder expands the image data to 32bit RGBA.
+    /// This affects:
+    ///
+    ///  - The buffer buffer of the `Frame` returned by `Reader::read_next_frame`.
+    ///  - `Reader::fill_buffer`, `Reader::buffer_size` and `Reader::line_length`.
     RGBA = 0,
-    /// The decoder returns the raw indexed data*/
+    /// The decoder returns the raw indexed data.
     Indexed = 1,
 }
 
@@ -40,7 +44,7 @@ impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
     }
 }
 
-impl<R: Read> HasParameters for Decoder<R> {}
+impl<R: Read> SetParameter for Decoder<R> {}
 
 /// GIF decoder
 pub struct Decoder<R: Read> {
@@ -102,6 +106,7 @@ impl<R: Read> ReadDecoder<R> {
 }
 
 #[allow(dead_code)]
+/// GIF decoder
 pub struct Reader<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,

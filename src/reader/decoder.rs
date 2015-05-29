@@ -8,7 +8,7 @@ use std::io::prelude::*;
 
 use lzw;
 
-use traits::{HasParameters, Parameter};
+use traits::{SetParameter, Parameter};
 use common::{Frame, Block, Extension, DisposalMethod};
 
 /// GIF palettes are RGB
@@ -54,14 +54,24 @@ impl Parameter<StreamingDecoder> for Extensions {
 /// Indicates whether a certain object has been decoded
 #[derive(Debug)]
 pub enum Decoded<'a> {
+    /// Decoded nothing.
     Nothing,
+    /// Decoded the image trailer.
     Trailer,
+    /// The start of a block.
     BlockStart(Block),
+    /// Decoded a sub-block. More sub-block are available.
     SubBlockFinished(u8, &'a [u8]),
+    /// Decoded the last (or only) sub-block of a block.
     BlockFinished(u8, &'a [u8]),
+    /// Decoded the global palette.
     GlobalPalette(Rc<Vec<u8>>),
+    /// Decoded all information of the next frame.
+    /// The returned frame does **not** any image data.
     Frame(&'a Frame<'static>),
+    /// Decoded some data of the current frame.
     Data(&'a [u8]),
+    /// No more data available the current frame.
     DataEnd,
 
 }
@@ -134,9 +144,10 @@ pub struct StreamingDecoder {
     current: Option<Frame<'static>>,
 }
 
-impl HasParameters for StreamingDecoder {}
+impl SetParameter for StreamingDecoder {}
 
 impl StreamingDecoder {
+    /// Creates a new streaming decoder
     pub fn new() -> StreamingDecoder {
         StreamingDecoder {
             state: Some(Magic(0, [0; 6])),
@@ -152,6 +163,10 @@ impl StreamingDecoder {
         }
     }
     
+    /// Updates the internal state of the decoder. 
+    ///
+    /// Returns the number of bytes consumed from the input buffer 
+    /// and the last decoding result.
     pub fn update<'a>(&'a mut self, mut buf: &[u8])
     -> Result<(usize, Decoded<'a>), DecodingError> {
         // NOTE: Do not change the function signature without double-checking the
@@ -198,16 +213,19 @@ impl StreamingDecoder {
         ).unwrap_or(0) as usize
     }
     
+    /// Returns the data of the last extension that has been decoded.
     pub fn last_ext(&self) -> (u8, &[u8], bool) {
         (self.ext.0, &*self.ext.1, self.ext.2)
     }
     
     #[inline(always)]
+    /// Current frame info as a mutable ref.
     pub fn current_frame_mut<'a>(&'a mut self) -> &'a mut Frame<'static> {
         self.current.as_mut().unwrap()
     }
     
     #[inline(always)]
+    /// Current frame info as a ref.
     pub fn current_frame<'a>(&'a self) -> &'a Frame<'static> {
         self.current.as_ref().unwrap()
     }

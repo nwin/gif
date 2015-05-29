@@ -11,9 +11,10 @@
 //! 
 //! ### Decoding GIF files
 //! 
-//! //! 
 //! ```
 //! // Open the file
+//! use std::fs::File;
+//! use gif::SetParameter;
 //! let mut decoder = gif::Decoder::new(File::open("tests/samples/sample_1.gif").unwrap());
 //! // Configure the decoder such that it will expand the image to RGBA.
 //! decoder.set(gif::ColorOutput::RGBA);
@@ -99,7 +100,7 @@
 // }
 // # })().unwrap();
 // ```
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 
 #![cfg_attr(test, feature(test))]
 #![feature(alloc)]
@@ -119,7 +120,7 @@ mod c_api_utils;
 #[cfg(feature = "c_api")]
 pub mod c_api;
 
-pub use traits::{HasParameters, Parameter};
+pub use traits::{SetParameter, Parameter};
 pub use common::{Block, Extension, DisposalMethod, Frame};
 
 pub use reader::{StreamingDecoder, Decoded, DecodingError};

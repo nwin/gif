@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::io::BufReader;
 use std::io::prelude::*;
 
-use gif::HasParameters;
+use gif::SetParameter;
 
 const BASE_PATH: [&'static str; 2] = [".", "tests"];
 
