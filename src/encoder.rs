@@ -217,7 +217,7 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 
 	fn write_image_block(&mut self, data: &[u8]) -> io::Result<()> {
 		{
-			let min_code_size: u8 = flag_size((*data.iter().max().unwrap_or(&0) + 1) as usize) + 1;
+			let min_code_size: u8 = flag_size((*data.iter().max().unwrap_or(&0) as usize + 1)) + 1;
 			try!(self.w.write_le(min_code_size));
 			let mut bw = BlockWriter::new(&mut self.w);
 			let mut enc = try!(lzw::Encoder::new(lzw::LsbWriter::new(&mut bw), min_code_size));
