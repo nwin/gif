@@ -400,7 +400,7 @@ impl StreamingDecoder {
             BlockEnd(terminator) => {
                 if terminator == 0 {
                     if b == Block::Trailer as u8 {
-                        goto!(0, Trailer)
+                        goto!(0, BlockStart(Some(Block::Trailer)))
                     } else {
                         goto!(BlockStart(num::FromPrimitive::from_u8(b)))
                     }
