@@ -10,8 +10,8 @@ use num;
 use lzw;
 
 use traits::{HasParameters, Parameter};
-use types::{Frame, Block};
-use types::{DisposalMethod};
+use common::{Frame, Block};
+use common::{DisposalMethod};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
@@ -383,7 +383,7 @@ impl StreamingDecoder {
                 }
             }
             BlockStart(type_) => {
-                use types::Block::*;
+                use common::Block::*;
                 match type_ {
                     Some(Image) => {
                         self.add_frame();
@@ -411,7 +411,7 @@ impl StreamingDecoder {
                 }
             }
             ExtensionBlock(type_) => {
-                use types::Extension::*;
+                use common::Extension::*;
                 self.ext.0 = type_;
                 self.ext.1.clear();
                 self.ext.1.push(b);

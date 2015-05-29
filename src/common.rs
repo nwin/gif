@@ -1,4 +1,4 @@
-//! Common types used both by decoder and encoder
+//! Common common used both by decoder and encoder
 extern crate color_quant;
 
 use std::mem;
@@ -30,7 +30,7 @@ impl DisposalMethod {
     }
 }
 
-/// Known block types
+/// Known block common
 enum_from_primitive!{
 #[derive(Debug, Copy, Clone)]
 pub enum Block {

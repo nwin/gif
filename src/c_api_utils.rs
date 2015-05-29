@@ -5,7 +5,7 @@ use std::slice;
 
 use libc::{malloc, size_t, c_int, read, close};
 
-use types::Block;
+use common::Block;
 use reader::{Decoded, DecodingError, PLTE_CHANNELS};
 use c_api::{GifFileType, SavedImage, ColorMapObject, GifColorType, _Bool,
 		   InputFunc

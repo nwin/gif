@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::io::prelude::*;
 
 use traits::{HasParameters, Parameter};
-use types::Frame;
+use common::Frame;
 use util;
 
 mod decoder;
@@ -92,7 +92,7 @@ impl<R: Read> ReadDecoder<R> {
             self.reader.consume(consumed);
             match result {
                 Decoded::Nothing => (),
-                Decoded::BlockStart(::types::Block::Trailer) => {
+                Decoded::BlockStart(::common::Block::Trailer) => {
                     self.at_eof = true
                 },
                 result => return Ok(unsafe{
@@ -385,7 +385,7 @@ mod c_interface {
 
     use libc::c_int;
     
-    use types::Block;
+    use common::Block;
 
     use c_api::{self, GifWord};
     use c_api_utils::{CInterface, copy_colormap, copy_data, saved_images_new};

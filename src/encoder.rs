@@ -1,3 +1,24 @@
+
+/*
+# Minimal gif encoder
+```
+use std::fs::File;
+
+// Get pixel data from some source
+let mut pixels = unimplemented!();
+// Create frame from data
+let frame = Frame::from_rgb(100, 100, &mut *pixels);
+// Create encoder
+let encoder = gif::Encoder::new(File::create("some.gif").unwrap(), frame.width, frame.height);
+// Write header to file
+let mut encoder = encoder.write_global_palette(&[]).unwrap();
+// Write frame to file
+encoder.write_frame(&frame).unwrap();
+```
+*/
+
+
+
 use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
@@ -6,7 +27,7 @@ use std::slice::bytes;
 use lzw;
 
 use traits::WriteBytesExt;
-use types::{Block, Frame, Extension, DisposalMethod};
+use common::{Block, Frame, Extension, DisposalMethod};
 
 pub enum ExtensionData {
 	Control { flags: u8, delay: u16, trns: u8 }

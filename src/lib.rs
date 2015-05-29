@@ -75,7 +75,7 @@ extern crate num;
 #[macro_use] extern crate enum_primitive;
 
 mod traits;
-mod types;
+mod common;
 mod util;
 mod reader;
 mod encoder;
@@ -86,7 +86,7 @@ mod c_api_utils;
 pub mod c_api;
 
 pub use traits::HasParameters;
-pub use types::{Block, Extension, DisposalMethod, Frame};
+pub use common::{Block, Extension, DisposalMethod, Frame};
 
 pub use reader::{StreamingDecoder, Decoded, DecodingError};
 /// StreamingDecoder configuration parameters

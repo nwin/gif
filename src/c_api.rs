@@ -274,7 +274,7 @@ fn DGifGetScreenDesc(_: *mut GifFileType) -> c_int {
 /*
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetRecordType(this: *mut GifFileType, record_type: *mut GifRecordType) -> c_int {
-    use types::Block::*;
+    use common::Block::*;
     use self::GifRecordType::*;
     *record_type = match try_capi!(try_get_decoder!(this).next_record_type()) {
         Image => IMAGE_DESC_RECORD_TYPE,
@@ -308,7 +308,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
 /// Returns the type of the extension and the first extension sub-block `(size, data...)`
 #[no_mangle] pub unsafe extern "C"
 fn DGifGetExtension(this: *mut GifFileType, ext_type: *mut c_int, ext_block: *mut *const GifByteType) -> c_int {
-    use types::Block::*;
+    use common::Block::*;
     let decoder = try_get_decoder!(this);
     match try_capi!(decoder.next_record_type()) {
         Image | Trailer => {
