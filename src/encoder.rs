@@ -111,18 +111,12 @@ impl<'a, W: Write + 'a> Drop for BlockWriter<'a, W> {
 	}
 }
 
-pub struct Encoder<'a, W: Write + 'a> {
-	w: &'a mut W,
-	global_palette: bool,
-	width: u16,
-	height: u16
+/// Wrapper for `Encoder` that indicates that the file headers have been written.
+pub struct HeaderWritten<W: Write> {
+	enc: Encoder<W>
 }
 
-pub struct HeaderWritten<'a, W: Write + 'a> {
-	enc: Encoder<'a, W>
-}
-
-impl<'a, W: Write + 'a> HeaderWritten<'a, W> {
+impl<W: Write> HeaderWritten<W> {
 	/// Writes a complete frame to the image
 	///
 	/// Note: This function also writes a control extention if necessary.
@@ -141,7 +135,7 @@ impl<'a, W: Write + 'a> HeaderWritten<'a, W> {
 	}
 }
 
-impl<'a, W: Write + 'a> Drop for HeaderWritten<'a, W> {
+impl<W: Write> Drop for HeaderWritten<W> {
 
     #[cfg(feature = "raii_no_panic")]
 	fn drop(&mut self) {
@@ -171,8 +165,18 @@ pub struct Frame {
 }
 
 */
-impl<'a, W: Write + 'a> Encoder<'a, W> {
-	pub fn new(w: &'a mut W, width: u16, height: u16) -> Self {
+
+/// Minimal GIF encoder.
+pub struct Encoder<W: Write> {
+    w: W,
+    global_palette: bool,
+    width: u16,
+    height: u16
+}
+
+impl<W: Write> Encoder<W> {
+    /// Creates a new encoder.
+	pub fn new(w: W, width: u16, height: u16) -> Self {
 		Encoder {
 			w: w,
 			global_palette: false,
@@ -182,7 +186,7 @@ impl<'a, W: Write + 'a> Encoder<'a, W> {
 	}
 
 	/// Writes the global color palette
-	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<HeaderWritten<'a, W>> {
+	pub fn write_global_palette(mut self, palette: &[u8]) -> io::Result<HeaderWritten<W>> {
 		self.global_palette = true;
 		let mut flags = 0;
 		flags |= 0b1000_0000;
