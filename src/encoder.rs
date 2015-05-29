@@ -22,12 +22,12 @@ encoder.write_frame(&frame).unwrap();
 use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
-use std::slice::bytes;
 
 use lzw;
 
 use traits::WriteBytesExt;
 use common::{Block, Frame, Extension, DisposalMethod};
+use util;
 
 pub enum ExtensionData {
 	Control { flags: u8, delay: u16, trns: u8 }
@@ -75,7 +75,7 @@ impl<'a, W: Write + 'a> Write for BlockWriter<'a, W> {
 
 	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
 		let to_copy = min(buf.len(), 0xFF - self.bytes);
-		bytes::copy_memory(&buf[..to_copy], &mut self.buf[self.bytes..]);
+		util::copy_memory(&buf[..to_copy], &mut self.buf[self.bytes..]);
 		self.bytes += to_copy;
 		if self.bytes == 0xFF {
 			self.bytes = 0;

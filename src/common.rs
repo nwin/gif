@@ -4,8 +4,6 @@ extern crate color_quant;
 use std::mem;
 use std::borrow::Cow;
 
-use util;
-
 /// Disposal method
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]

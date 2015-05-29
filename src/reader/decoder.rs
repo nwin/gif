@@ -367,7 +367,7 @@ impl StreamingDecoder {
             GlobalPalette(left) => {
                 let n = cmp::min(left, buf.len());
                 if left > 0 {
-                    self.global_color_table.make_unique().push_all(&buf[..n]);
+                    self.global_color_table.make_unique().extend(buf[..n].iter().cloned());
                     goto!(n, GlobalPalette(left - n))
                 } else {
                     let idx = self.background_color[0];
@@ -451,7 +451,7 @@ impl StreamingDecoder {
                 if left > 0 {
                     
                     self.current_frame_mut().palette
-                        .as_mut().unwrap().push_all(&buf[..n]);
+                        .as_mut().unwrap().extend(buf[..n].iter().cloned());
                     goto!(n, LocalPalette(left - n))
                 } else {
                     goto!(LzwInit(b))

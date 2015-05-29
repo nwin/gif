@@ -105,6 +105,7 @@ impl<R: Read> ReadDecoder<R> {
     }
 }
 
+#[allow(dead_code)]
 pub struct Reader<R: Read> {
     decoder: ReadDecoder<R>,
     color_output: ColorOutput,
@@ -348,15 +349,6 @@ mod test {
     }
     
     #[test]
-    fn test_simple_expanded() {
-        let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap());
-        decoder.set(ColorOutput::TrueColor);
-        let mut decoder = decoder.read_info().unwrap();
-        let frame = decoder.read_next_frame().unwrap().unwrap();
-        assert_eq!((&frame.buffer as &[u8]).iter().map(|&v| v as u32).sum::<u32>(), 59160)
-    }
-    
-    #[test]
     fn test_simple_indexed() {
         let mut decoder = Decoder::new(File::open("tests/samples/sample_1.gif").unwrap()).read_info().unwrap();
         let frame = decoder.read_next_frame().unwrap().unwrap();
@@ -396,7 +388,7 @@ mod c_interface {
 
     impl<R> Reader<R> where R: Read + 'static {   
         pub fn into_c_interface(self) -> Box<CInterface> {
-            box self
+            Box::new(self)
         }
     }
 

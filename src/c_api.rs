@@ -17,6 +17,7 @@ use libc::{free, c_int, c_uint, c_char, c_uchar, c_void};
 
 use reader::{Decoder, Reader, Decoded};
 use c_api_utils::{CInterface, CFile, FnInputFile};
+use util;
 
 #[repr(u8)]
 enum_from_primitive!{
@@ -196,9 +197,9 @@ fn DGifOpenFileName(gif_file_name: *const c_char, err: *mut c_int) -> *mut GifFi
         Decoder::new(file).read_info(),
         err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
     ).into_c_interface();
-    let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
+    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
     decoder.read_screen_desc(&mut *this);
-    let decoder = boxed::into_raw(box boxed::into_raw(decoder));
+    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }
@@ -209,9 +210,9 @@ fn DGifOpenFileHandle(fp: c_int, err: *mut c_int) -> *mut GifFileType {
         Decoder::new(CFile::new(fp)).read_info(),
         err, D_GIF_ERR_READ_FAILED, ptr::null_mut()
     ).into_c_interface();
-    let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
+    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
     decoder.read_screen_desc(&mut *this);
-    let decoder = boxed::into_raw(box boxed::into_raw(decoder));
+    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }
@@ -227,7 +228,7 @@ fn DGifSlurp(this: *mut GifFileType) -> c_int {
 */
 #[no_mangle] pub unsafe extern "C"
 fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut GifFileType {
-    let this: *mut GifFileType = boxed::into_raw(box mem::zeroed());
+    let this: *mut GifFileType = boxed::into_raw(Box::new(mem::zeroed()));
     (*this).UserData = user_data;
     let decoder = try_capi!(
         Decoder::new(FnInputFile::new(read_fn, this)).read_info(),
@@ -239,7 +240,7 @@ fn DGifOpen(user_data: *mut c_void, read_fn: InputFunc, err: *mut c_int) -> *mut
             ptr::null_mut()
         }
     ).into_c_interface();
-    let decoder = boxed::into_raw(box boxed::into_raw(decoder));
+    let decoder = boxed::into_raw(Box::new(boxed::into_raw(decoder)));
     (*this).Private = mem::transmute(decoder);
     this
 }
@@ -299,7 +300,7 @@ fn DGifGetLine(this: *mut GifFileType, line: *mut GifPixelType, len: c_int) -> c
     let len = cmp::min(buffer.len(), len as usize);
     *offset = *offset + len;
     let line = slice::from_raw_parts_mut(line, len);
-    slice::bytes::copy_memory(buffer, line);
+    util::copy_memory(buffer, line);
     GIF_OK
 }
 //int DGifGetPixel(GifFileType *GifFile, GifPixelType GifPixel);

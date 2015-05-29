@@ -61,9 +61,6 @@
 // # })().unwrap();
 // ```
 
-#![feature(collections)]
-#![feature(core)]
-#![feature(box_syntax)]
 #![cfg_attr(test, feature(test))]
 #![feature(alloc)]
 
