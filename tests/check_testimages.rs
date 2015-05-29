@@ -66,16 +66,17 @@ fn render_images() {
         let mut decoder = gif::Decoder::new(try!(File::open(path)));
         decoder.set(gif::ColorOutput::TrueColor);
         let mut decoder = decoder.read_info().unwrap();
-        let frame = decoder.read_next_frame().unwrap().unwrap();
-        // First sanity check:
-        assert_eq!(
-            frame.buffer.len(), 
-            frame.width as usize
-            * frame.height as usize
-            * 4
-        );
         let mut crc = Crc32::new();
-        crc.update(&*frame.buffer);
+        while let Some(frame) = decoder.read_next_frame().unwrap() {
+            // First sanity check:
+            assert_eq!(
+                frame.buffer.len(), 
+                frame.width as usize
+                * frame.height as usize
+                * 4
+            );
+            crc.update(&*frame.buffer);
+        }
         Ok(crc.checksum())
     })
 }

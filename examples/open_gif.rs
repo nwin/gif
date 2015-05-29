@@ -9,24 +9,21 @@ use std::io::prelude::*;
 #[cfg(not(test))]
 fn main() {
     
-    let mut decoder = gif::Decoder::new(File::open("tests/samples/animated.gif").unwrap());
+    let mut decoder = gif::Decoder::new(File::open("tests/sample_big.gif").unwrap());
     decoder.set(gif::ColorOutput::TrueColor);
     let mut decoder = decoder.read_info().unwrap();
-    let frame = decoder.read_next_frame().unwrap().unwrap();
-    
-    let mut crc = Crc32::new();
-    crc.update(&*frame.buffer);
-    
-    image::save_buffer(
-        "sample_1.gif.png",
-        &*frame.buffer,
-        frame.width as u32,
-        frame.height as u32,
-        image::ColorType::RGBA(8),
-    ).ok().unwrap();
-    
-    //assert_eq!(crc.checksum(), 0xc33b036b);
-    println!("checksum of data(as rgba) {:x}", crc.checksum());
+    while let Some(frame) = decoder.read_next_frame().unwrap() {
+        let mut crc = Crc32::new();
+        crc.update(&*frame.buffer);
+        image::save_buffer(
+            "sample_1.gif.png",
+            &*frame.buffer,
+            frame.width as u32,
+            frame.height as u32,
+            image::ColorType::RGBA(8),
+        ).ok().unwrap();
+        println!("checksum of data(as rgba) {:x}", crc.checksum());
+    }
 }
 
 const CRC_TABLE: [u32; 256] = [

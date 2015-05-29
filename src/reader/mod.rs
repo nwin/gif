@@ -54,6 +54,7 @@ pub struct Decoder<R: Read> {
 }
 
 impl<R: Read> Decoder<R> {
+    /// Creates a new decoder builder
     pub fn new(r: R) -> Decoder<R> {
         Decoder {
             r: r,
@@ -62,6 +63,9 @@ impl<R: Read> Decoder<R> {
         }
     }
     
+    /// Reads the logical screen descriptor including the global color palette
+    ///
+    /// Returns a `Reader`. All decoder configuration has to be done beforehand.
     pub fn read_info(self) -> Result<Reader<R>, DecodingError> {
         Reader::new(self.r, self.decoder, self.color_output).init()
     }
@@ -70,30 +74,34 @@ impl<R: Read> Decoder<R> {
 struct ReadDecoder<R: Read> {
     reader: io::BufReader<R>,
     decoder: StreamingDecoder,
+    at_eof: bool
 }
 
 impl<R: Read> ReadDecoder<R> {
     fn decode_next(&mut self) -> Result<Option<Decoded>, DecodingError> {
-        loop {
+        while !self.at_eof {
             let (consumed, result) = {
                 let buf = try!(self.reader.fill_buf());
                 if buf.len() == 0 {
-                    return Err(DecodingError::Format(
+                    /*return Err(DecodingError::Format(
                         "unexpected EOF"
-                    ))
+                    ))*/
                 }
                 try!(self.decoder.update(buf))
             };
             self.reader.consume(consumed);
             match result {
-                Decoded::Nothing => continue,
-                Decoded::Trailer => return Ok(None),
+                Decoded::Nothing => (),
+                Decoded::BlockStart(::types::Block::Trailer) => {
+                    self.at_eof = true
+                },
                 result => return Ok(unsafe{
                     // FIXME: #6393
                     Some(mem::transmute::<Decoded, Decoded>(result))
                 }),
             }
         }
+        Ok(None)
     }
 }
 
@@ -113,7 +121,8 @@ impl<R> Reader<R> where R: Read {
         Reader {
             decoder: ReadDecoder {
                 reader: io::BufReader::new(reader),
-                decoder: decoder
+                decoder: decoder,
+                at_eof: false
             },
             global_palette: None,
             buffer: Vec::with_capacity(32),
@@ -124,31 +133,39 @@ impl<R> Reader<R> where R: Read {
     }
     
     fn init(mut self) -> Result<Self, DecodingError> {
-        match try!(self.next_frame()) {
-            Some(_) => (),
-            None => return Err(DecodingError::Format(
-                "File does not contain any image data"
-            ))
-            
+        loop {
+            match try!(self.decoder.decode_next()) {
+                Some(Decoded::GlobalPalette(palette)) => {
+                    self.global_palette = if palette.len() > 0 {
+                        Some(palette)
+                    } else {
+                        None
+                    };
+                    break
+                },
+                Some(_) => {
+                    unreachable!()
+                },
+                None => return Err(DecodingError::Format(
+                    "File does not contain any image data"
+                ))
+            }
         }
         Ok(self)
     }
     
-    /// Returns the next frame
-    fn next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
+    /// Returns the next frame info
+    pub fn next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
         loop {
             match try!(self.decoder.decode_next()) {
                 Some(Decoded::Frame(frame)) => {
                     self.current_frame = frame.clone();
                     if frame.palette.is_none() && self.global_palette.is_none() {
                         return Err(DecodingError::Format(
-                            "Image does not contain any color table."
+                            "No color table available for current frame."
                         ))
                     }
                     break  
-                },
-                Some(Decoded::GlobalPalette(palette)) => {
-                    self.global_palette = Some(palette)
                 },
                 Some(_) => (),
                 None => return Ok(None)
@@ -157,25 +174,31 @@ impl<R> Reader<R> where R: Read {
         }
         Ok(Some(&self.current_frame))
     }
-    
-    /// Reads the next frame
+
+    /// Reads the next frame from the image.
+    ///
+    /// Do not call `Self::next_frame` beforehand.
     pub fn read_next_frame(&mut self) -> Result<Option<&Frame<'static>>, DecodingError> {
-        let mut buf = vec![0; self.buffer_size()];
-        for line in buf.chunks_mut(self.line_length()) {
-            if !try!(self.next_line(line)) {
+        if try!(self.next_frame()).is_some() {
+            let mut vec = vec![0; self.buffer_size()];
+            if !try!(self.fill_buffer(&mut vec)) {
                 return Err(DecodingError::Format(
                     "Image truncated"
                 ))
             }
+            self.current_frame.buffer = Cow::Owned(vec);
+            Ok(Some(&self.current_frame))
+        } else {
+            Ok(None)
         }
-        self.current_frame.buffer = Cow::Owned(buf);
-        Ok(Some(&self.current_frame))
     }
     
-    /// Fills the buffer with the data of the next line
+    /// Reads data of the current frame into a pre-allocated buffer.
     ///
-    /// The buffer has to be as long as `Self::line_length`
-    pub fn next_line(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {
+    /// `Self::next_frame` needs to be called beforehand. The returned boolean indicates
+    /// whether more data is available in the current frame. Should not be called after a `false`
+    /// had been returned.
+    pub fn fill_buffer(&mut self, mut buf: &mut [u8]) -> Result<bool, DecodingError> {
         use self::ColorOutput::*;
         const PLTE_CHANNELS: usize = 3;
         macro_rules! handle_data(
@@ -183,7 +206,6 @@ impl<R> Reader<R> where R: Read {
                 match self.color_output {
                     TrueColor => {
                         let transparent = self.current_frame.transparent;
-                        println!("{:?}", transparent);
                         let palette: &[u8] = match self.current_frame.palette {
                             Some(ref table) => &*table,
                             None => &*self.global_palette.as_ref().unwrap(),
@@ -256,14 +278,21 @@ impl<R> Reader<R> where R: Read {
         }
     }
     
-    /// The global color palette
-    pub fn palette(&self) -> &[u8] {
-        match self.current_frame.palette {
+    /// Returns the color palette relevant for the current (next) frame
+    pub fn palette(&self) -> Result<&[u8], DecodingError> {
+        // TODO prevent planic
+        Ok(match self.current_frame.palette {
             Some(ref table) => &*table,
-            None => &*self.global_palette.as_ref().unwrap(),
-        }
+            None => &*try!(self.global_palette.as_ref().ok_or(DecodingError::Format(
+                "No color table available for current frame."
+            ))),
+        })
     }
-
+    
+    /// The global color palette
+    pub fn global_palette(&self) -> Option<&[u8]> {
+        self.global_palette.as_ref().map(|v| &***v)
+    }
 
     /// Width of the image
     pub fn width(&self) -> u16 {
@@ -388,11 +417,6 @@ mod c_interface {
             Ok((&self.current_frame.buffer, &mut self.offset))
         }
 
-/*
-        fn seek_to(&mut self, position: Progress) -> Result<(), DecodingError> {
-            self.read_until(position)
-        }
-*/
         fn last_ext(&self) -> (u8, &[u8], bool) {
             self.decoder.decoder.last_ext()
         }
