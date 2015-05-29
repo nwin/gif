@@ -5,7 +5,7 @@ use std::mem;
 use std::rc::Rc;
 use std::io::prelude::*;
 
-use traits::{HasParameters, Parameter};
+use traits::{Parameter, HasParameters};
 use common::Frame;
 use util;
 
@@ -25,17 +25,13 @@ where T: Parameter<StreamingDecoder>, R: Read {
 }
 
 /// Output mode for the image data
-/// ### FIXME: NOT DOCS YET DUE TO RUST BUG
-enum_from_primitive!{
 #[derive(PartialEq, Debug)]
+#[repr(u8)]
 pub enum ColorOutput {
-    // FIXME enum_from_primitive and make this a doc-comment
-    // The decoder expands the image data to 32bit RGBA
-    TrueColor,
-    // FIXME enum_from_primitive and make this a doc-comment
-    // The decoder returns the raw indexed data*/
-    Indexed,
-}
+    /// The decoder expands the image data to 32bit RGBA
+    RGBA = 0,
+    /// The decoder returns the raw indexed data*/
+    Indexed = 1,
 }
 
 impl<R: Read> Parameter<Decoder<R>> for ColorOutput {
@@ -205,7 +201,7 @@ impl<R> Reader<R> where R: Read {
         macro_rules! handle_data(
             ($data:expr) => {
                 match self.color_output {
-                    TrueColor => {
+                    RGBA => {
                         let transparent = self.current_frame.transparent;
                         let palette: &[u8] = match self.current_frame.palette {
                             Some(ref table) => &*table,
@@ -274,7 +270,7 @@ impl<R> Reader<R> where R: Read {
     pub fn line_length(&self) -> usize {
         use self::ColorOutput::*;
         match self.color_output {
-            TrueColor => self.current_frame.width as usize * N_CHANNELS,
+            RGBA => self.current_frame.width as usize * N_CHANNELS,
             Indexed => self.current_frame.width as usize
         }
     }
@@ -318,8 +314,7 @@ mod test {
     use std::fs::File;
     use std::io::prelude::*;
 
-    use traits::HasParameters;
-    use super::{Decoder, ColorOutput};
+    use super::Decoder;
     
     
     #[bench]

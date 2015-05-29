@@ -6,20 +6,22 @@ use std::rc::Rc;
 use std::io;
 use std::io::prelude::*;
 
-use num;
 use lzw;
 
 use traits::{HasParameters, Parameter};
-use common::{Frame, Block};
-use common::{DisposalMethod};
+use common::{Frame, Block, Extension, DisposalMethod};
 
 /// GIF palettes are RGB
 pub const PLTE_CHANNELS: usize = 3;
 
 #[derive(Debug)]
+/// Decoding error.
 pub enum DecodingError {
+    /// Returned if the image is found to be malformed.
     Format(&'static str),
+    /// Internal (logic) error.
     Internal(&'static str),
+    /// Wraps `std::io::Error`.
     Io(io::Error),
 }
 
@@ -377,7 +379,7 @@ impl StreamingDecoder {
                         },
                         None => self.background_color[0] = 0
                     }
-                    goto!(BlockStart(num::FromPrimitive::from_u8(b)), emit Decoded::GlobalPalette(
+                    goto!(BlockStart(Block::from_u8(b)), emit Decoded::GlobalPalette(
                         self.global_color_table.clone()
                     ))
                 }
@@ -402,7 +404,7 @@ impl StreamingDecoder {
                     if b == Block::Trailer as u8 {
                         goto!(0, BlockStart(Some(Block::Trailer)))
                     } else {
-                        goto!(BlockStart(num::FromPrimitive::from_u8(b)))
+                        goto!(BlockStart(Block::from_u8(b)))
                     }
                 } else {
                     return Err(DecodingError::Format(
@@ -415,7 +417,7 @@ impl StreamingDecoder {
                 self.ext.0 = type_;
                 self.ext.1.clear();
                 self.ext.1.push(b);
-                if let Some(ext) = num::FromPrimitive::from_u8(type_) {
+                if let Some(ext) = Extension::from_u8(type_) {
                     match ext {
                         Control => {
                             goto!(try!(self.read_control_extension(b)))

@@ -1,21 +1,5 @@
 
-/*
-# Minimal gif encoder
-```
-use std::fs::File;
-
-// Get pixel data from some source
-let mut pixels = unimplemented!();
-// Create frame from data
-let frame = Frame::from_rgb(100, 100, &mut *pixels);
-// Create encoder
-let encoder = gif::Encoder::new(File::create("some.gif").unwrap(), frame.width, frame.height);
-// Write header to file
-let mut encoder = encoder.write_global_palette(&[]).unwrap();
-// Write frame to file
-encoder.write_frame(&frame).unwrap();
-```
-*/
+//! # Minimal gif encoder
 
 
 
@@ -166,7 +150,7 @@ pub struct Frame {
 
 */
 
-/// Minimal GIF encoder.
+/// GIF encoder.
 pub struct Encoder<W: Write> {
     w: W,
     global_palette: bool,

@@ -1,13 +1,19 @@
 //! Traits used in this library
 use std::io;
 
-/// Configuration parameter trait
+/// Configuration parameter trait.
+///
+/// Use the list of implementors to see which parameters are available for which struct.
 pub trait Parameter<Object> {
+    /// Sets `self` as a parameter of `Object`.
     fn set_param(self, &mut Object);
 }
 
-/// Object has parameters
+/// Implemented for objects that have parameters.
+///
+/// Provides a unified `set`-method to simplify the configuration.
 pub trait HasParameters: Sized {
+    /// Sets `value` as a parameter of `self`.
     fn set<T: Parameter<Self>>(&mut self, value: T) -> &mut Self {
         value.set_param(self);
         self

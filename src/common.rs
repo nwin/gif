@@ -19,6 +19,7 @@ pub enum DisposalMethod {
 }
 
 impl DisposalMethod {
+    /// Converts `u8` to `Option<Self>`
     pub fn from_u8(n: u8) -> Option<DisposalMethod> {
         if n <= 3 {
             Some(unsafe { mem::transmute(n) })
@@ -28,25 +29,55 @@ impl DisposalMethod {
     }
 }
 
-/// Known block common
-enum_from_primitive!{
+/// Known GIF block types
 #[derive(Debug, Copy, Clone)]
+#[repr(u8)]
 pub enum Block {
+    /// Image block.
     Image = 0x2C,
+    /// Extension block.
     Extension = 0x21,
+    /// Image trailer.
     Trailer = 0x3B
 }
+
+impl Block {
+    /// Converts `u8` to `Option<Self>`
+    pub fn from_u8(n: u8) -> Option<Block> {
+        match n {
+            0x2C | 0x21 | 0x3B => {
+                Some(unsafe { mem::transmute(n) })
+            }
+            _ => None
+        }
+    }
 }
 
+
 /// Known GIF extensions
-enum_from_primitive!{
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
+#[repr(u8)]
 pub enum Extension {
+    /// Text extension.
     Text = 0x01,
+    /// Control extension.
     Control = 0xF9,
+    /// Comment extension.
     Comment = 0xFE,
+    /// Application extension.
     Application = 0xFF
 }
+
+impl Extension {
+    /// Converts `u8` to `Option<Self>`
+    pub fn from_u8(n: u8) -> Option<Extension> {
+        match n {
+            0x01 | 0xF9 | 0xFE | 0xFF => {
+                Some(unsafe { mem::transmute(n) })
+            }
+            _ => None
+        }
+    }
 }
 
 /// A GIF frame
@@ -87,7 +118,7 @@ impl Frame<'static> {
     
     /// Creates a frame from pixels in RGBA format.
     ///
-    /// Note: This method is not optimized for speed.
+    /// *Note: This method is not optimized for speed.*
     pub fn from_rgba(width: u16, height: u16, pixels: &mut [u8]) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 4, pixels.len());
         let mut frame = Frame::default();
@@ -116,7 +147,7 @@ impl Frame<'static> {
     
     /// Creates a frame from pixels in RGB format.
     ///
-    /// Note: This method is not optimized for speed.
+    /// *Note: This method is not optimized for speed.*
     pub fn from_rgb(width: u16, height: u16, pixels: &[u8]) -> Frame<'static> {
         assert_eq!(width as usize * height as usize * 3, pixels.len());
         let mut vec: Vec<u8> = Vec::with_capacity(pixels.len() + width as usize * height as usize);
